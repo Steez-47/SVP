@@ -1,0 +1,7 @@
+node_modules/
+dist/
+test-media/
+*.log
+src-tauri/target/
+src-tauri/gen/
+ui/steez/

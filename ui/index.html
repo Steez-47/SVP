@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en" data-theme="noir">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SVP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Fraunces:opsz,wght@9..144,400..700&family=Inter:wght@400..700&family=Instrument+Serif&family=JetBrains+Mono:wght@400..700&family=Manrope:wght@500..800&family=Newsreader:opsz,wght@6..72,400..700&family=Nunito:wght@400..900&family=Outfit:wght@400..700&family=Plus+Jakarta+Sans:wght@400..800&display=swap">
+<link rel="stylesheet" href="steez/css/steez.css">
+<script src="steez/js/steez.js"></script>
+<link rel="stylesheet" href="app.css">
+</head>
+<body class="svp" data-mode="empty">
+<!-- STZ 0.1.03 -->
+<div class="wallpaper" aria-hidden="true"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div><div class="blob b4"></div></div>
+
+<!-- ============ Title bar · STZ 4.2.01 composition ============ -->
+<header class="titlebar glass glass--thick" id="titlebar" data-tauri-drag-region>
+  <span class="brand" data-tauri-drag-region><svg class="i i-sm"><use href="#i-play"/></svg>SVP</span>
+  <span class="title" id="title" data-tauri-drag-region>Steez Video Player</span>
+  <span class="badges" id="badges" data-tauri-drag-region></span>
+  <span class="spacer" data-tauri-drag-region></span>
+  <!-- STZ 1.3.07 -->
+  <button class="icon-btn icon-btn--ghost icon-btn--sm has-count pressable" id="btnJobs" aria-label="Exports" data-tip="Exports" data-popover="p-jobs" hidden><svg class="i"><use href="#i-download"/></svg><span class="count-bubble" id="jobCount">0</span></button>
+  <!-- STZ 1.3.02 -->
+  <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnOpen" aria-label="Open video" data-tip="Open · Ctrl+O"><svg class="i"><use href="#i-folder"/></svg></button>
+  <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnCompare" aria-label="Compare videos" data-tip="Compare · C"><svg class="i"><use href="#i-compare"/></svg></button>
+  <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnSettings" aria-label="Settings" data-tip="Settings · Ctrl+,"><svg class="i"><use href="#i-settings"/></svg></button>
+  <span class="tb-sep"></span>
+  <button class="icon-btn icon-btn--ghost icon-btn--sm pressable win-btn" id="winMin" aria-label="Minimize"><svg class="i"><use href="#i-win-min"/></svg></button>
+  <button class="icon-btn icon-btn--ghost icon-btn--sm pressable win-btn" id="winMax" aria-label="Maximize"><svg class="i"><use href="#i-win-max"/></svg></button>
+  <button class="icon-btn icon-btn--ghost icon-btn--sm pressable win-btn win-close" id="winClose" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
+</header>
+
+<!-- ============ Stage ============ -->
+<main class="stage" id="stage">
+  <video id="video" preload="auto" playsinline disablepictureinpicture></video>
+  <canvas id="frameCanvas" class="frame-canvas" aria-hidden="true"></canvas>
+
+  <!-- Compare stage -->
+  <div class="compare" id="compare" hidden>
+    <div class="cmp-view" id="cmpView">
+      <video id="cmpA" preload="auto" muted playsinline></video>
+      <div class="cmp-b" id="cmpBWrap"><video id="cmpB" preload="auto" muted playsinline></video></div>
+      <div class="cmp-handle" id="cmpHandle" role="slider" aria-label="Split position" tabindex="0" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span class="cmp-knob"><svg class="i i-sm"><use href="#i-chev-left"/></svg><svg class="i i-sm"><use href="#i-chev-right"/></svg></span></div>
+    </div>
+    <span class="cmp-tag cmp-tag--a glass glass--thick" id="cmpTagA">A</span>
+    <span class="cmp-tag cmp-tag--b glass glass--thick" id="cmpTagB">B</span>
+  </div>
+
+  <!-- Empty state · STZ 7.6.01 + STZ 7.1.01 recent list -->
+  <section class="empty-wrap" id="empty">
+    <div class="empty-card glass">
+      <div class="empty">
+        <div class="orb"><svg class="i"><use href="#i-film"/></svg></div>
+        <h4>Drop a video to play</h4>
+        <p>Any format: AV1, HEVC, VP9, ProRes, MKV and more.</p>
+        <div class="row" style="justify-content:center">
+          <button class="btn btn--filled pressable" id="emptyOpen"><svg class="i"><use href="#i-folder"/></svg>Open video<kbd>Ctrl O</kbd></button>
+          <button class="btn btn--glass pressable" id="emptyCompare"><svg class="i"><use href="#i-compare"/></svg>Compare two</button>
+        </div>
+      </div>
+      <div class="recent" id="recentWrap" hidden>
+        <div class="menu-label">Recent</div>
+        <div class="list" id="recent"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="osd glass glass--thick" id="osd" aria-live="polite"></div>
+  <!-- STZ 5.4.02 -->
+  <div class="busy" id="busy" hidden><div class="ring-spin" role="status" aria-label="Loading"></div><span id="busyText"></span></div>
+  <div class="drop-hint" id="dropHint" hidden><div class="glass glass--thick"><svg class="i i-lg"><use href="#i-upload"/></svg><strong>Drop to play</strong><span class="muted" id="dropSub">Drop two files to compare them</span></div></div>
+</main>
+
+<!-- ============ Dock ============ -->
+<section class="dock glass glass--thick" id="dock" aria-label="Playback controls">
+  <!-- Trim bar (shown in trim mode) -->
+  <div class="trimbar" id="trimbar" hidden>
+    <div class="row-tight">
+      <button class="btn btn--glass btn--sm pressable" id="trimIn" data-tip="Set start · I"><svg class="i"><use href="#i-bracket-in"/></svg>Start</button>
+      <button class="btn btn--glass btn--sm pressable" id="trimOut" data-tip="Set end · O"><svg class="i"><use href="#i-bracket-out"/></svg>End</button>
+      <button class="btn btn--plain btn--sm pressable" id="trimAdd" data-tip="New segment · N"><svg class="i"><use href="#i-plus"/></svg>Segment</button>
+      <span class="trim-info tnum" id="trimInfo"></span>
+    </div>
+    <div class="row-tight">
+      <!-- STZ 2.4.01 -->
+      <div class="seg" role="radiogroup" aria-label="Cut mode" data-liquid id="trimMode">
+        <span class="seg-thumb liquid-thumb"></span>
+        <button role="radio" aria-checked="true" data-value="lossless" data-tip="Stream copy, starts on a keyframe">Lossless</button><button role="radio" aria-checked="false" data-value="precise" data-tip="Frame-exact, re-encodes">Exact</button>
+      </div>
+      <!-- STZ 1.4.02 -->
+      <div class="split">
+        <button class="btn btn--filled btn--sm pressable" id="trimExport"><svg class="i"><use href="#i-scissors"/></svg>Export</button>
+        <button class="btn btn--filled btn--sm pressable" aria-label="Export options" aria-haspopup="menu" aria-expanded="false" data-menu="m-trimx"><svg class="i i-chev"><use href="#i-chev-down"/></svg></button>
+      </div>
+      <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="trimClose" aria-label="Close trim" data-tip="Close · Esc"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline" id="timeline" role="slider" aria-label="Seek" tabindex="0" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+    <div class="tl-track">
+      <div class="tl-buf" id="tlBuf"></div>
+      <div class="tl-cache" id="tlCache"></div>
+      <div class="tl-fill" id="tlFill"></div>
+      <div class="tl-segs" id="tlSegs"></div>
+      <div class="tl-keys" id="tlKeys"></div>
+      <div class="tl-chapters" id="tlChapters"></div>
+    </div>
+    <div class="tl-thumb" id="tlThumb"></div>
+  </div>
+
+  <div class="dock-row">
+    <div class="dock-group">
+      <!-- STZ 1.3.02 -->
+      <button class="icon-btn icon-btn--ghost pressable play-btn" id="btnPlay" aria-label="Play" data-tip="Play · Space"><svg class="i"><use href="#i-play"/></svg></button>
+      <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnPrev" aria-label="Previous frame" data-tip="Previous frame · ,"><svg class="i"><use href="#i-frame-prev"/></svg></button>
+      <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnNext" aria-label="Next frame" data-tip="Next frame · ."><svg class="i"><use href="#i-frame-next"/></svg></button>
+      <button class="time tnum pressable" id="time" data-tip="Toggle remaining / frames"><span id="tCur">0:00</span><span class="faint"> / </span><span id="tDur" class="muted">0:00</span></button>
+    </div>
+    <div class="dock-group">
+      <div class="vol" id="volWrap">
+        <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnMute" aria-label="Mute" data-tip="Mute · M"><svg class="i"><use href="#i-vol-high"/></svg></button>
+        <!-- STZ 2.6.01 (range only) -->
+        <input type="range" id="vol" min="0" max="100" value="100" aria-label="Volume">
+      </div>
+      <!-- STZ 4.7.05 trigger -->
+      <button class="btn btn--plain btn--sm pressable speed-btn tnum" id="btnSpeed" aria-haspopup="menu" aria-expanded="false" data-menu="m-speed" data-tip="Speed · [ ]">1×</button>
+      <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnTracks" aria-haspopup="menu" aria-expanded="false" data-menu="m-tracks" aria-label="Audio and subtitles" data-tip="Audio & subtitles"><svg class="i"><use href="#i-captions"/></svg></button>
+      <span class="tb-sep"></span>
+      <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnTrim" aria-label="Trim" aria-pressed="false" data-tip="Trim · T"><svg class="i"><use href="#i-scissors"/></svg></button>
+      <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnCompress" aria-label="Compress" data-tip="Compress · P"><svg class="i"><use href="#i-compress"/></svg></button>
+      <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnSnap" aria-label="Save frame" data-tip="Save frame · S"><svg class="i"><use href="#i-camera"/></svg></button>
+      <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnMore" aria-haspopup="menu" aria-expanded="false" data-menu="m-more" aria-label="More"><svg class="i"><use href="#i-more"/></svg></button>
+      <button class="icon-btn icon-btn--ghost icon-btn--sm pressable" id="btnFull" aria-label="Fullscreen" data-tip="Fullscreen · F"><svg class="i"><use href="#i-fullscreen"/></svg></button>
+    </div>
+  </div>
+</section>
+
+<!-- Timeline hover preview (fixed, outside the dock so glass never nests) -->
+<div class="tl-hover glass glass--thick" id="tlHover"><canvas id="tlHoverImg" width="160" height="90"></canvas><span class="tnum" id="tlHoverTime">0:00</span></div>
+
+<!-- ============ Menus ============ -->
+<!-- STZ 4.7.05 -->
+<div class="popup" id="m-speed" role="menu" data-align="center">
+  <div class="menu-label">Playback speed</div>
+  <div id="speedItems"></div>
+</div>
+<!-- STZ 4.7.03 + 4.7.05 -->
+<div class="popup" id="m-tracks" role="menu" data-align="end">
+  <div class="menu-label">Audio</div>
+  <div id="audioItems"></div>
+  <div class="menu-sep"></div>
+  <div class="menu-label">Subtitles</div>
+  <div id="subItems"></div>
+  <button class="menu-item" role="menuitem" id="subLoad"><svg class="i"><use href="#i-upload"/></svg>Load subtitle file…</button>
+</div>
+<!-- STZ 4.7.02 + 4.7.04 -->
+<div class="popup" id="m-more" role="menu" data-align="end">
+  <button class="menu-item" role="menuitemcheckbox" aria-checked="false" id="mLoop"><svg class="i"><use href="#i-repeat"/></svg>Loop<kbd>L</kbd><svg class="i mi-check"><use href="#i-check"/></svg></button>
+  <button class="menu-item" role="menuitemcheckbox" aria-checked="false" id="mTop"><svg class="i"><use href="#i-pip"/></svg>Always on top<svg class="i mi-check"><use href="#i-check"/></svg></button>
+  <div class="menu-sep"></div>
+  <button class="menu-item" role="menuitem" id="mInfo"><svg class="i"><use href="#i-info"/></svg>Media info<kbd>Tab</kbd></button>
+  <button class="menu-item" role="menuitem" id="mReveal"><svg class="i"><use href="#i-folder"/></svg>Show in folder</button>
+  <button class="menu-item" role="menuitem" id="mCopyPath"><svg class="i"><use href="#i-copy"/></svg>Copy file path</button>
+  <div class="menu-sep"></div>
+  <button class="menu-item" role="menuitem" id="mShortcuts"><svg class="i"><use href="#i-keyboard"/></svg>Keyboard shortcuts<kbd>?</kbd></button>
+</div>
+
+<!-- STZ 1.4.02 menu (+ 4.7.05 radio items) -->
+<div class="popup" id="m-trimx" role="menu" data-align="end">
+  <div class="menu-label">Segments</div>
+  <button class="menu-item" role="menuitemradio" aria-checked="true" data-merge="1"><svg class="i"><use href="#i-film"/></svg>Join into one file<svg class="i mi-check"><use href="#i-check"/></svg></button>
+  <button class="menu-item" role="menuitemradio" aria-checked="false" data-merge="0"><svg class="i"><use href="#i-layers"/></svg>One file per segment<svg class="i mi-check"><use href="#i-check"/></svg></button>
+  <div class="menu-sep"></div>
+  <button class="menu-item" role="menuitem" id="trimToCompress"><svg class="i"><use href="#i-compress"/></svg>Compress selection…</button>
+  <button class="menu-item danger" role="menuitem" id="trimClear"><svg class="i"><use href="#i-trash"/></svg>Reset segments</button>
+</div>
+
+<!-- ============ Jobs popover · STZ 6.3.01 + 5.3.01 ============ -->
+<div class="popup popover jobs-pop" id="p-jobs" role="dialog" aria-label="Exports">
+  <div class="row" style="justify-content:space-between"><h4>Exports</h4><button class="btn btn--plain btn--sm pressable" id="jobsClear">Clear finished</button></div>
+  <div class="jobs" id="jobs"></div>
+</div>
+
+<!-- ============ Media info panel · STZ 7.7.01 ============ -->
+<aside class="info-panel glass glass--thick" id="infoPanel" hidden>
+  <header><h4>Media info</h4><button class="icon-btn icon-btn--sm icon-btn--ghost pressable" id="infoClose" aria-label="Close media info"><svg class="i"><use href="#i-x"/></svg></button></header>
+  <div id="infoBody"></div>
+</aside>
+
+<!-- ============ Compress drawer · STZ 6.5.01 ============ -->
+<dialog class="ov drawer-dlg" id="d-compress" aria-labelledby="d-compress-t">
+  <form method="dialog" class="drawer ov-card compress">
+    <header><h2 id="d-compress-t">Compress</h2><button class="icon-btn icon-btn--sm pressable" value="close" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <div class="cmp-src caption" id="cxSrc"></div>
+    <!-- STZ 2.4.02 -->
+    <div class="seg seg--wide" role="radiogroup" aria-label="Compression mode" data-liquid id="cxMode">
+      <span class="seg-thumb liquid-thumb"></span>
+      <button type="button" role="radio" aria-checked="true" data-value="preset">Quality</button><button type="button" role="radio" aria-checked="false" data-value="target">Target size</button>
+    </div>
+    <div class="drawer-scroll">
+      <!-- STZ 2.3.02 -->
+      <div class="stack" role="radiogroup" aria-label="Quality preset" id="cxPresets">
+        <label class="choice-card"><input type="radio" name="cx-preset" value="near-lossless" class="sr-only" checked><span class="radio"><span class="dot"></span></span><span class="choice-label">Near-lossless<small>Looks identical, roughly 99% of the quality</small></span><span class="est tnum" data-est="near-lossless"></span></label>
+        <label class="choice-card"><input type="radio" name="cx-preset" value="high" class="sr-only"><span class="radio"><span class="dot"></span></span><span class="choice-label">High<small>Hard to tell apart, much smaller</small></span><span class="est tnum" data-est="high"></span></label>
+        <label class="choice-card"><input type="radio" name="cx-preset" value="balanced" class="sr-only"><span class="radio"><span class="dot"></span></span><span class="choice-label">Balanced<small>Great for sharing</small></span><span class="est tnum" data-est="balanced"></span></label>
+        <label class="choice-card"><input type="radio" name="cx-preset" value="small" class="sr-only"><span class="radio"><span class="dot"></span></span><span class="choice-label">Small<small>Smallest file, visible softening</small></span><span class="est tnum" data-est="small"></span></label>
+      </div>
+      <div class="stack" id="cxTarget" hidden>
+        <!-- STZ 3.1.05 -->
+        <div class="field"><label class="label" for="cxMB">Target file size</label><div class="affix"><input class="input tnum" id="cxMB" inputmode="decimal" value="25"><span>MB</span></div><span class="help" id="cxMBHelp"></span></div>
+        <!-- STZ 2.5.02 -->
+        <div class="chips" data-single id="cxQuick">
+          <button type="button" class="chip pressable" aria-pressed="false" data-mb="8"><span class="chip-check"><span><svg class="i"><use href="#i-check"/></svg></span></span>8 MB</button><button type="button" class="chip pressable" aria-pressed="false" data-mb="10"><span class="chip-check"><span><svg class="i"><use href="#i-check"/></svg></span></span>10 MB</button><button type="button" class="chip pressable" aria-pressed="true" data-mb="25"><span class="chip-check"><span><svg class="i"><use href="#i-check"/></svg></span></span>25 MB</button><button type="button" class="chip pressable" aria-pressed="false" data-mb="50"><span class="chip-check"><span><svg class="i"><use href="#i-check"/></svg></span></span>50 MB</button><button type="button" class="chip pressable" aria-pressed="false" data-mb="100"><span class="chip-check"><span><svg class="i"><use href="#i-check"/></svg></span></span>100 MB</button><button type="button" class="chip pressable" aria-pressed="false" data-mb="500"><span class="chip-check"><span><svg class="i"><use href="#i-check"/></svg></span></span>500 MB</button>
+        </div>
+      </div>
+      <div class="field"><span class="label">Codec</span>
+        <div class="seg seg--wide" role="radiogroup" aria-label="Codec" data-liquid id="cxCodec">
+          <span class="seg-thumb liquid-thumb"></span>
+          <button type="button" role="radio" aria-checked="false" data-value="h264" data-tip="Plays everywhere">H.264</button><button type="button" role="radio" aria-checked="true" data-value="hevc" data-tip="About half the size of H.264">H.265</button><button type="button" role="radio" aria-checked="false" data-value="av1" data-tip="Smallest, slower to encode">AV1</button>
+        </div>
+      </div>
+      <!-- STZ 7.5.01 -->
+      <div class="accordion" data-accordion>
+        <div class="acc-item"><button type="button" class="acc-head" aria-expanded="false">Advanced<svg class="i"><use href="#i-chev-down"/></svg></button><div class="acc-body"><div class="stack">
+          <!-- STZ 3.4.02 -->
+          <div class="field"><label class="label" for="cxEnc">Encoder</label><select class="input input--plain" id="cxEnc"><option value="auto">Automatic</option><option value="cpu">CPU (best quality per MB)</option><option value="nvenc">NVIDIA NVENC</option><option value="amf">AMD AMF</option><option value="qsv">Intel Quick Sync</option></select></div>
+          <div class="field"><label class="label" for="cxSpeed">Encoding speed</label><select class="input input--plain" id="cxSpeed"><option value="fast">Fast</option><option value="balanced" selected>Balanced</option><option value="slow">Slow (smaller)</option></select></div>
+          <div class="field"><label class="label" for="cxRes">Resolution</label><select class="input input--plain" id="cxRes"><option value="">Original</option><option value="2160">2160p</option><option value="1440">1440p</option><option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option></select></div>
+          <div class="field"><label class="label" for="cxFps">Frame rate</label><select class="input input--plain" id="cxFps"><option value="">Original</option><option value="60">60 fps max</option><option value="30">30 fps max</option><option value="24">24 fps max</option></select></div>
+          <div class="field"><label class="label" for="cxAudio">Audio</label><select class="input input--plain" id="cxAudio"><option value="copy">Keep original</option><option value="aac-192">AAC 192 kbps</option><option value="aac-128">AAC 128 kbps</option><option value="aac-96">AAC 96 kbps</option><option value="opus-128">Opus 128 kbps</option><option value="opus-96">Opus 96 kbps</option><option value="none">Remove audio</option></select></div>
+          <!-- STZ 2.1.02 -->
+          <div class="toggle-row"><span class="choice-label">Use trim selection<small>Only compress the trimmed range</small></span><button type="button" class="switch" role="switch" aria-checked="false" aria-label="Use trim selection" id="cxUseTrim"><span class="knob"></span></button></div>
+          <div class="toggle-row"><span class="choice-label">Measure quality (VMAF)<small>Scores the result against the source</small></span><button type="button" class="switch" role="switch" aria-checked="false" aria-label="Measure quality" id="cxVmaf"><span class="knob"></span></button></div>
+        </div></div></div>
+      </div>
+    </div>
+    <div class="actions"><button class="btn btn--plain pressable" value="cancel">Cancel</button><button type="button" class="btn btn--filled pressable" id="cxGo"><svg class="i"><use href="#i-compress"/></svg>Compress</button></div>
+  </form>
+</dialog>
+
+<!-- ============ Compare picker · STZ 6.1.01 + 3.8.01 ============ -->
+<dialog class="ov" id="d-compare" aria-labelledby="d-compare-t">
+  <form method="dialog" class="dialog ov-card">
+    <h2 id="d-compare-t">Compare videos</h2>
+    <p>Pick two videos. They're scaled to the same size so you can drag a split line across them.</p>
+    <div class="pick-grid">
+      <button type="button" class="pick pressable" id="pickA" data-slot="a"><span class="pick-tag">A</span><span class="pick-name">Choose video</span><span class="pick-sub caption"></span></button>
+      <button type="button" class="icon-btn icon-btn--sm pressable" id="pickSwap" aria-label="Swap A and B" data-tip="Swap"><svg class="i"><use href="#i-swap"/></svg></button>
+      <button type="button" class="pick pressable" id="pickB" data-slot="b"><span class="pick-tag">B</span><span class="pick-name">Choose video</span><span class="pick-sub caption"></span></button>
+    </div>
+    <div class="actions"><button class="btn btn--plain pressable" value="cancel">Cancel</button><button type="button" class="btn btn--filled pressable" id="cmpGo" disabled>Compare</button></div>
+  </form>
+</dialog>
+
+<!-- ============ Settings · STZ 6.1.01 + 4.1.01 + 7.1.01 ============ -->
+<dialog class="ov" id="d-settings" aria-labelledby="d-settings-t">
+  <form method="dialog" class="dialog ov-card settings">
+    <header class="set-head"><h2 id="d-settings-t">Settings</h2><button class="icon-btn icon-btn--sm pressable" value="close" aria-label="Close settings"><svg class="i"><use href="#i-x"/></svg></button></header>
+    <div class="set-body">
+      <nav class="mini-side" data-liquid-v aria-label="Settings sections" id="setNav">
+        <span class="liquid-thumb"></span>
+        <button type="button" aria-current="true" data-sec="playback"><svg class="i"><use href="#i-play"/></svg>Playback</button>
+        <button type="button" data-sec="frames"><svg class="i"><use href="#i-frame-next"/></svg>Frame stepping</button>
+        <button type="button" data-sec="interface"><svg class="i"><use href="#i-window"/></svg>Interface</button>
+        <button type="button" data-sec="appearance"><svg class="i"><use href="#i-palette"/></svg>Appearance</button>
+        <button type="button" data-sec="export"><svg class="i"><use href="#i-download"/></svg>Export</button>
+        <button type="button" data-sec="keys"><svg class="i"><use href="#i-keyboard"/></svg>Shortcuts</button>
+        <button type="button" data-sec="engine"><svg class="i"><use href="#i-cpu"/></svg>Engine</button>
+        <button type="button" data-sec="about"><svg class="i"><use href="#i-refresh"/></svg>Updates</button>
+      </nav>
+      <div class="set-panes" id="setPanes"></div>
+    </div>
+  </form>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

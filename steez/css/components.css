@@ -695,6 +695,10 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: var(--t-callout);
 .choice-card:hover { background: var(--fill-2); }
 .choice-card:active { transform: scale(0.99); }
 .choice-card:has(input:checked) { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* radio cards (2.3.02): the input sits beside .radio, so fill the dot from the card */
+.choice-card:has(input:checked) .radio .dot { background: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.choice-card:has(input:checked) .radio .dot::after { transform: scale(1); }
+.choice-card:has(input:focus-visible) .radio .dot { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* 2.10 selectable tile grid */
 .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--s-2); width: 100%; }
