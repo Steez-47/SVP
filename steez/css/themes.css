@@ -1,0 +1,172 @@
+/* ==========================================================================
+   STEEZ — 8 themes, arranged as 4 opposing pairs
+   A: T1 Harbor    ↔ T4 Paper      (navy night + brass   vs  warm paper + vermilion)
+   B: T3 Espresso  ↔ T2 Porcelain  (dark warm brown      vs  light cool neutral)
+   C: T5 Evergreen ↔ T6 Bubblegum  (deep spruce + mint   vs  pastel pink + lilac)
+   D: T7 Noir      ↔ T8 Tropic     (monochrome           vs  polychrome)
+
+   RULE: themes change COLOR freely. Shape, type and motion only nudge:
+   --r stays within 8–16px, controls always use --font-body (Inter),
+   only headings take the theme's --font-display.
+   Themes are scoped to [data-theme] so they nest (see 8.1 gallery tiles).
+   ========================================================================== */
+
+/* T1 — HARBOR · navy night, brass accent ------------------------------- */
+[data-theme="harbor"] {
+  --scheme: dark;
+  --bg: #0b1220;
+  --wp-1: #1d3557; --wp-2: #8a6a3c; --wp-3: #14324a; --wp-4: #2b3f5c;
+  --text-1: #eef2f7; --text-2: #b4bfcf; --text-3: #8d99ab;
+  --accent: #d4a85a; --accent-ink: #1a1206;
+  --success: #5cc79a; --warning: #e9b949; --danger: #f07a6e; --danger-ink: #1f0705;
+  --glass: rgb(17 26 43 / 0.84); --glass-thick: rgb(14 21 36 / 0.95);
+  --glass-rim: rgb(255 255 255 / 0.14); --glass-edge: rgb(255 255 255 / 0.09);
+  --glass-blur: 20px; --glass-sat: 140%;
+  --shade: 220 50% 3%;
+  --fill: rgb(255 255 255 / 0.06); --fill-2: rgb(255 255 255 / 0.11); --hairline: rgb(255 255 255 / 0.11);
+  --r: 12px;
+  --font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --display-weight: 700; --display-tracking: -0.025em;
+}
+
+/* T2 — PORCELAIN · light, cool-neutral, calm --------------------------- */
+[data-theme="porcelain"] {
+  --scheme: light;
+  --bg: #e9edf3;
+  --wp-1: #c3d3ee; --wp-2: #f3e6da; --wp-3: #d7e4f5; --wp-4: #ffffff;
+  --text-1: #0f1726; --text-2: #3f4b62; --text-3: #5a6578;
+  --accent: #2457d6; --accent-ink: #ffffff;
+  --success: #12805c; --warning: #a35c00; --danger: #c8283c; --danger-ink: #ffffff;
+  --glass: rgb(255 255 255 / 0.84); --glass-thick: rgb(255 255 255 / 0.96);
+  --glass-rim: rgb(255 255 255 / 0.95); --glass-edge: rgb(15 23 38 / 0.09);
+  --glass-blur: 24px; --glass-sat: 150%;
+  --shade: 220 40% 25%;
+  --fill: rgb(15 23 38 / 0.05); --fill-2: rgb(15 23 38 / 0.09); --hairline: rgb(15 23 38 / 0.11);
+  --thumb: #ffffff;
+  --r: 12px;
+  --font-display: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --display-weight: 700; --display-tracking: -0.025em;
+  --spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* T3 — ESPRESSO · dark roast brown, caramel accent --------------------- */
+[data-theme="espresso"] {
+  --scheme: dark;
+  --bg: #15100c;
+  --wp-1: #3d2a1e; --wp-2: #7a5232; --wp-3: #2a1d15; --wp-4: #5c4030;
+  --text-1: #f6ede4; --text-2: #d0bfb0; --text-3: #a8968a;
+  --accent: #e0a066; --accent-ink: #1f1309;
+  --success: #8fc79a; --warning: #e7bd5e; --danger: #ec806e; --danger-ink: #1f0705;
+  --glass: rgb(34 25 19 / 0.84); --glass-thick: rgb(28 20 15 / 0.95);
+  --glass-rim: rgb(255 235 215 / 0.14); --glass-edge: rgb(255 230 200 / 0.08);
+  --glass-blur: 20px; --glass-sat: 130%;
+  --shade: 25 50% 3%;
+  --fill: rgb(255 240 225 / 0.06); --fill-2: rgb(255 240 225 / 0.11); --hairline: rgb(255 235 215 / 0.11);
+  --r: 12px;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --display-weight: 600; --display-tracking: -0.02em;
+}
+
+/* T4 — PAPER · warm off-white stock, ink, vermilion -------------------- */
+[data-theme="paper"] {
+  --scheme: light;
+  --bg: #f3efe6;
+  --wp-1: #e6ddcb; --wp-2: #faf7f0; --wp-3: #e0d5c0; --wp-4: #ffffff;
+  --text-1: #1b1a17; --text-2: #4a463f; --text-3: #625d54;
+  --accent: #c63f26; --accent-ink: #ffffff;
+  --success: #2f7a4a; --warning: #9a6400; --danger: #b3261e; --danger-ink: #ffffff;
+  --glass: rgb(255 253 248 / 0.84); --glass-thick: rgb(255 253 249 / 0.97);
+  --glass-rim: rgb(255 255 255 / 0.9); --glass-edge: rgb(40 30 10 / 0.11);
+  --glass-blur: 18px; --glass-sat: 110%;
+  --shade: 35 25% 25%;
+  --fill: rgb(40 30 10 / 0.05); --fill-2: rgb(40 30 10 / 0.09); --hairline: rgb(40 30 10 / 0.12);
+  --thumb: #ffffff;
+  --r: 10px;
+  --font-display: "Newsreader", ui-serif, Georgia, serif;
+  --display-weight: 600; --display-tracking: -0.02em;
+}
+
+/* T5 — EVERGREEN · deep spruce, mint accent ---------------------------- */
+[data-theme="evergreen"] {
+  --scheme: dark;
+  --bg: #08130f;
+  --wp-1: #163a2c; --wp-2: #2a5c47; --wp-3: #0d241b; --wp-4: #3c5a4a;
+  --text-1: #e9f5ef; --text-2: #b0c9bd; --text-3: #89a397;
+  --accent: #6fd3a5; --accent-ink: #04140d;
+  --success: #6fd3a5; --warning: #e6c35c; --danger: #f08378; --danger-ink: #1f0705;
+  --glass: rgb(14 31 24 / 0.84); --glass-thick: rgb(11 25 19 / 0.95);
+  --glass-rim: rgb(220 255 235 / 0.14); --glass-edge: rgb(200 255 225 / 0.08);
+  --glass-blur: 20px; --glass-sat: 140%;
+  --shade: 155 50% 3%;
+  --fill: rgb(220 255 235 / 0.06); --fill-2: rgb(220 255 235 / 0.11); --hairline: rgb(220 255 235 / 0.11);
+  --r: 14px;
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --display-weight: 600; --display-tracking: -0.02em;
+}
+
+/* T6 — BUBBLEGUM · pastel pink + lilac, soft and round ----------------- */
+[data-theme="bubblegum"] {
+  --scheme: light;
+  --bg: #ffeef6;
+  --wp-1: #ffa8d5; --wp-2: #c7b2ff; --wp-3: #ffe1a1; --wp-4: #aeeeff;
+  --text-1: #3a1238; --text-2: #6a3a64; --text-3: #7d4c77;
+  --accent: #c9286f; --accent-ink: #ffffff;
+  --success: #1e7d5a; --warning: #9a5b00; --danger: #c2183f; --danger-ink: #ffffff;
+  --glass: rgb(255 255 255 / 0.82); --glass-thick: rgb(255 250 253 / 0.96);
+  --glass-rim: rgb(255 255 255 / 1); --glass-edge: rgb(150 40 120 / 0.10);
+  --glass-blur: 24px; --glass-sat: 160%;
+  --shade: 320 50% 40%;
+  --fill: rgb(150 40 120 / 0.06); --fill-2: rgb(150 40 120 / 0.11); --hairline: rgb(150 40 120 / 0.13);
+  --thumb: #ffffff;
+  --r: 16px;
+  --font-display: "Nunito", ui-rounded, system-ui, sans-serif;
+  --display-weight: 900; --display-tracking: -0.02em;
+}
+
+/* T7 — NOIR · pure monochrome, editorial serif headings ---------------- */
+[data-theme="noir"] {
+  --scheme: dark;
+  --bg: #000000;
+  --wp-1: #2c2c2c; --wp-2: #4a4a48; --wp-3: #121212; --wp-4: #6b6b66;
+  --text-1: #f5f5f2; --text-2: #b8b8b3; --text-3: #92928d;
+  --accent: #f5f5f2; --accent-ink: #000000;
+  --success: #a3c7a5; --warning: #dcc684; --danger: #e48a7e; --danger-ink: #000000;
+  --glass: rgb(20 20 20 / 0.86); --glass-thick: rgb(14 14 14 / 0.96);
+  --glass-rim: rgb(255 255 255 / 0.14); --glass-edge: rgb(255 255 255 / 0.08);
+  --glass-blur: 24px; --glass-sat: 100%;
+  --shade: 0 0% 0%;
+  --fill: rgb(255 255 255 / 0.06); --fill-2: rgb(255 255 255 / 0.11); --hairline: rgb(255 255 255 / 0.11);
+  --thumb: rgb(255 255 255 / 0.16);
+  --r: 8px;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --display-weight: 400; --display-tracking: -0.01em;
+  --icon-stroke: 1.5;
+}
+
+/* T8 — TROPIC · sun-bright, polychrome, saturated ---------------------- */
+[data-theme="tropic"] {
+  --scheme: light;
+  --bg: #fff4dc;
+  --wp-1: #ff7a59; --wp-2: #00b3a4; --wp-3: #ffd23f; --wp-4: #3d7bff;
+  --text-1: #11203a; --text-2: #34435c; --text-3: #4b5a72;
+  --accent: #ff6b47; --accent-ink: #1a0e08;
+  --success: #00796e; --warning: #9a6300; --danger: #c62a3c; --danger-ink: #ffffff;
+  --glass: rgb(255 255 255 / 0.84); --glass-thick: rgb(255 252 244 / 0.96);
+  --glass-rim: rgb(255 255 255 / 1); --glass-edge: rgb(17 32 58 / 0.10);
+  --glass-blur: 24px; --glass-sat: 180%;
+  --shade: 25 60% 30%;
+  --fill: rgb(17 32 58 / 0.06); --fill-2: rgb(17 32 58 / 0.10); --hairline: rgb(17 32 58 / 0.12);
+  --thumb: #ffffff;
+  --r: 14px;
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --display-weight: 750; --display-tracking: -0.035em;
+}
+
+/* Playful themes get a slightly bouncier spring (same durations) */
+@supports (transition-timing-function: linear(0, 1)) {
+  [data-theme="bubblegum"], [data-theme="tropic"] {
+    --spring: linear(0, 0.009, 0.035 2.1%, 0.141, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017,
+      1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%, 1.051 39.6%,
+      1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%, 0.997 69.8%, 1.003 76.9%, 1);
+  }
+}

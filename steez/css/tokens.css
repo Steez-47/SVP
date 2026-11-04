@@ -1,0 +1,172 @@
+/* ==========================================================================
+   STEEZ — Base tokens + theme contract
+   Every theme (css/themes.css) MUST define the "THEME CONTRACT" variables.
+   Everything else is derived here, so a theme is ~40 lines.
+   ========================================================================== */
+
+:root {
+  /* ---- THEME CONTRACT (defaults = T1 Harbor) ------------------------- */
+  /* Themes set COLOR freely. Shape/type only nudge: --r 8–16px, headings only
+     take --font-display. Controls are identical in every theme.            */
+  --scheme: dark;
+
+  /* surfaces */
+  --bg: #0b1220;                /* page base under the wallpaper */
+  --wp-1: #1d3557;              /* wallpaper light 1..4 (keep muted) */
+  --wp-2: #8a6a3c;
+  --wp-3: #14324a;
+  --wp-4: #2b3f5c;
+
+  /* ink */
+  --text-1: #eef2f7;            /* primary text  ≥ 7:1 on glass */
+  --text-2: #b4bfcf;            /* secondary     ≥ 4.5:1 */
+  --text-3: #8d99ab;            /* tertiary / placeholder ≥ 4.5:1 */
+
+  /* brand + status */
+  --accent: #d4a85a;
+  --accent-ink: #1a1206;        /* text on accent fill */
+  --success: #5cc79a;
+  --warning: #e9b949;
+  --danger: #f07a6e;
+  --danger-ink: #1f0705;
+
+  /* glass material — near-solid by default for contrast */
+  --glass: rgb(17 26 43 / 0.84);         /* regular: panels */
+  --glass-thick: rgb(14 21 36 / 0.95);   /* chrome: sidebar, toolbar, menus, sheets, dialogs */
+  --glass-rim: rgb(255 255 255 / 0.14);  /* specular rim light */
+  --glass-edge: rgb(255 255 255 / 0.09); /* inner hairline border */
+  --glass-blur: 20px;
+  --glass-sat: 140%;
+  --shade: 220 50% 3%;                   /* HSL triplet for shadows */
+  --fill: rgb(255 255 255 / 0.06);       /* neutral control fill */
+  --fill-2: rgb(255 255 255 / 0.11);     /* hover / pressed fill */
+  --hairline: rgb(255 255 255 / 0.11);   /* separators */
+  --thumb: color-mix(in oklab, var(--text-1) 16%, var(--glass-thick)); /* sliding selection pills */
+
+  /* shape */
+  --r: 12px;                    /* base radius 8–16; scale derives from it */
+  --stroke-w: 1px;
+
+  /* type — controls always use --font-body; themes only swap --font-display */
+  --font-display: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --display-weight: 700;
+  --display-tracking: -0.025em;
+  --display-case: none;
+  --label-case: none;
+  --label-tracking: 0;
+  --icon-stroke: 1.75;
+  --icon-cap: round;
+  --icon-join: round;
+
+  /* motion — shared by every theme */
+  --dur-1: 160ms;               /* micro: press, hover, check */
+  --dur-2: 320ms;               /* base: thumbs, toggles, menus */
+  --dur-3: 500ms;               /* large: sheets, dialogs, theme */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);     /* fallback; upgraded with linear() */
+  --press-scale: 0.96;
+}
+
+/* ---- DERIVED (do not set in themes) — recomputed on every theme scope -- */
+:root, [data-theme] {
+  --r-xs: calc(var(--r) * 0.4);
+  --r-sm: calc(var(--r) * 0.7);
+  --r-md: var(--r);
+  --r-lg: calc(var(--r) * 1.45);
+  --r-xl: calc(var(--r) * 2);
+  --r-full: 999px;
+
+  --accent-soft: color-mix(in oklab, var(--accent) 20%, transparent);
+  --accent-text: color-mix(in oklab, var(--accent) 64%, var(--text-1)); /* accent used as text */
+  --accent-line: color-mix(in oklab, var(--accent) 55%, transparent);
+  --success-soft: color-mix(in oklab, var(--success) 18%, transparent);
+  --warning-soft: color-mix(in oklab, var(--warning) 18%, transparent);
+  --danger-soft: color-mix(in oklab, var(--danger) 18%, transparent);
+
+  --shadow-1: 0 1px 2px hsl(var(--shade) / 0.18), 0 2px 6px hsl(var(--shade) / 0.10);
+  --shadow-2: 0 2px 4px hsl(var(--shade) / 0.16), 0 8px 24px hsl(var(--shade) / 0.18);
+  --shadow-3: 0 4px 10px hsl(var(--shade) / 0.18), 0 18px 48px hsl(var(--shade) / 0.26);
+  --shadow-4: 0 10px 24px hsl(var(--shade) / 0.22), 0 36px 90px hsl(var(--shade) / 0.36);
+
+  /* type scale (fixed rem: app UI, not marketing) */
+  --t-display: 2.75rem;
+  --t-title-1: 1.75rem;
+  --t-title-2: 1.3125rem;
+  --t-headline: 1.0625rem;
+  --t-body: 0.9375rem;
+  --t-callout: 0.875rem;
+  --t-caption: 0.75rem;
+
+  /* spacing (4pt grid) */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px; --s-16: 64px;
+
+  --control-h: 40px;
+  --control-h-sm: 32px;
+  --control-h-lg: 50px;
+
+  color-scheme: var(--scheme);
+}
+
+/* Spring curves via linear() where supported */
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --spring: linear(0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%,
+      0.937 38.1%, 0.968 41.8%, 0.991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001 85.9%, 1);
+  }
+}
+
+/* ---- Accessibility overrides (8.2 Appearance) ------------------------- */
+:root[data-transparency="reduced"] {
+  --glass: color-mix(in oklab, var(--bg) 88%, var(--text-1) 6%);
+  --glass-thick: color-mix(in oklab, var(--bg) 92%, var(--text-1) 8%);
+  --glass-blur: 0px;
+  --glass-sat: 100%;
+}
+:root[data-contrast="more"] {
+  --text-2: var(--text-1);
+  --text-3: color-mix(in oklab, var(--text-1) 80%, var(--bg));
+  --glass-rim: color-mix(in oklab, var(--text-1) 60%, transparent);
+  --hairline: color-mix(in oklab, var(--text-1) 35%, transparent);
+  --stroke-w: 1.5px;
+}
+:root[data-motion="reduced"] {
+  --dur-1: 1ms; --dur-2: 1ms; --dur-3: 1ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) { --dur-1: 1ms; --dur-2: 1ms; --dur-3: 1ms; }
+}
+
+/* ---- Reset + browser surfaces ---------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: var(--font-body);
+  font-size: var(--t-body);
+  line-height: 1.5;
+  color: var(--text-1);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
+  font-feature-settings: "cv11", "ss01";
+}
+h1, h2, h3, h4 { margin: 0; font-family: var(--font-display); font-weight: var(--display-weight);
+  letter-spacing: var(--display-tracking); text-transform: var(--display-case); text-wrap: balance; line-height: 1.15; }
+p { margin: 0; text-wrap: pretty; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; padding: 0; }
+svg { display: block; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+input, textarea { caret-color: var(--accent); }
+a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+* { scrollbar-width: thin; scrollbar-color: color-mix(in oklab, var(--text-1) 25%, transparent) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: color-mix(in oklab, var(--text-1) 22%, transparent); border-radius: 99px; border: 3px solid transparent; background-clip: padding-box; }
+.tnum { font-variant-numeric: tabular-nums; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

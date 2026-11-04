@@ -1,0 +1,59 @@
+/* ==========================================================================
+   STEEZ — Material: wallpaper + glass + theme view-transition
+   ========================================================================== */
+
+/* ---- Wallpaper: the light that glass refracts ------------------------- */
+.wallpaper {
+  position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  background: var(--bg);
+}
+.wallpaper .blob {
+  position: absolute; width: 70vmax; height: 70vmax; border-radius: 50%;
+  opacity: 0.45; will-change: transform;
+  animation: drift 38s var(--ease-in-out) infinite alternate;
+}
+.wallpaper .b1 { background: radial-gradient(closest-side, var(--wp-1), transparent); top: -30vmax; left: -15vmax; }
+.wallpaper .b2 { background: radial-gradient(closest-side, var(--wp-2), transparent); bottom: -35vmax; right: -20vmax; animation-duration: 46s; animation-delay: -12s; }
+.wallpaper .b3 { background: radial-gradient(closest-side, var(--wp-3), transparent); top: 20vh; right: 10vw; width: 50vmax; height: 50vmax; animation-duration: 52s; animation-delay: -20s; }
+.wallpaper .b4 { background: radial-gradient(closest-side, var(--wp-4), transparent); bottom: -10vh; left: 10vw; width: 45vmax; height: 45vmax; animation-duration: 41s; animation-delay: -6s; }
+.wallpaper::after { /* film grain keeps blur from banding */
+  content: ""; position: absolute; inset: 0; opacity: 0.07; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+[data-theme="noir"] .wallpaper .blob, .wallpaper[data-theme="noir"] .blob { opacity: 0.7; }
+@keyframes drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(6vmax, 4vmax, 0) scale(1.08); }
+  100% { transform: translate3d(-4vmax, 7vmax, 0) scale(0.94); }
+}
+:root[data-motion="reduced"] .wallpaper .blob { animation: none; }
+@media (prefers-reduced-motion: reduce) { :root:not([data-motion="full"]) .wallpaper .blob { animation: none; } }
+
+/* ---- 0.1 Glass material ---------------------------------------------- */
+/* Recipe: near-solid tint + backdrop blur/saturate + specular rim (::after) + hairline edge + soft offset shadow */
+.glass {
+  position: relative; isolation: isolate;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow: var(--shadow-2), inset 0 0 0 var(--stroke-w) var(--glass-edge);
+  border-radius: var(--r-lg);
+}
+.glass::after { /* specular rim: bright top-left, bright bottom-right, clear sides */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: var(--stroke-w);
+  background: linear-gradient(135deg, var(--glass-rim), transparent 32%, transparent 68%, color-mix(in oklab, var(--glass-rim) 60%, transparent));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none; z-index: 2;
+}
+.glass--thin  { background: color-mix(in oklab, var(--glass) 55%, transparent); --glass-blur-x: 0.6; }
+.glass--thick { background: var(--glass-thick); box-shadow: var(--shadow-3), inset 0 0 0 var(--stroke-w) var(--glass-edge); }
+.glass--clear { background: color-mix(in oklab, var(--glass) 18%, transparent); -webkit-backdrop-filter: blur(4px) saturate(160%); backdrop-filter: blur(4px) saturate(160%); }
+.glass--tinted { background: color-mix(in oklab, var(--accent) 34%, var(--glass)); }
+.glass--solid { background: color-mix(in oklab, var(--bg) 90%, var(--text-1) 8%); -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+
+/* ---- Theme view transition (8.1) ------------------------------------- */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { z-index: 2; }
+
