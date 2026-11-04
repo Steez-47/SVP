@@ -14,6 +14,8 @@ A compact, liquid-glass video player for Windows built on Tauri v2 (Rust + WebVi
 
 Requires Node 20+, Rust (stable) and FFmpeg 6+ (`ffmpeg`/`ffprobe` on PATH, or set the paths in Settings → Engine).
 
+Rust is pinned in `rust-toolchain.toml` so local and CI builds use the same compiler. Windows release builds (`npm run build`, also used by CI) require active Microsoft Defender and 7-Zip. They scan the finished installer and its extracted `svp.exe` before succeeding or uploading; a detection or scan error fails the build. Scanning the compressed installer alone missed the original v0.1.0 detection. These checks do not establish Microsoft's exact detection cause or guarantee future scan results. Updater signatures are separate from Windows Authenticode signing.
+
 ```sh
 npm install
 npm run dev      # development

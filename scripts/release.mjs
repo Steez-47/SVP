@@ -7,5 +7,12 @@ const edit = (f, fn) => writeFileSync(f, fn(readFileSync(f, "utf8")));
 edit("package.json", (s) => s.replace(/"version": "[^"]+"/, `"version": "${v}"`));
 edit("src-tauri/tauri.conf.json", (s) => s.replace(/"version": "[^"]+"/, `"version": "${v}"`));
 edit("src-tauri/Cargo.toml", (s) => s.replace(/^version = "[^"]+"/m, `version = "${v}"`));
-console.log(`SVP ${v}: updated package.json, tauri.conf.json, Cargo.toml`);
+edit("src-tauri/Cargo.lock", (s) => s.replace(/(\[\[package\]\]\r?\nname = "svp"\r?\nversion = ")[^"]+"/, `$1${v}"`));
+edit("package-lock.json", (s) => {
+  const lock = JSON.parse(s);
+  lock.version = v;
+  lock.packages[""].version = v;
+  return JSON.stringify(lock, null, 2) + "\n";
+});
+console.log(`SVP ${v}: updated manifests and lockfiles`);
 console.log(`next: git commit -am "SVP ${v}" && git tag v${v} && git push origin master v${v}`);

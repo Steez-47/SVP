@@ -18,17 +18,26 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install the pinned Rust toolchain
+        run: rustup show active-toolchain
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
       - run: npm ci
+      - name: Enable Defender and update signatures
+        shell: pwsh
+        run: |
+          # Hosted Windows images disable these checks by default.
+          Set-MpPreference -DisableRealtimeMonitoring $false -DisableBehaviorMonitoring $false -DisableIOAVProtection $false -DisableArchiveScanning $false -ErrorAction Stop
+          Update-MpSignature -ErrorAction Stop
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          tauriScript: node scripts/build.mjs
+          args: -- --locked
           tagName: ${{ github.ref_name }}
           releaseName: SVP ${{ github.ref_name }}
           releaseBody: Download the SVP installer below. Installed copies update themselves from Settings › Updates.

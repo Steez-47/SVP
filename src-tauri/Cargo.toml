@@ -1,6 +1,6 @@
 [package]
 name = "svp"
-version = "0.1.0"
+version = "0.1.1"
 description = "SVP · Steez Video Player"
 authors = ["Steez-47"]
 edition = "2021"
