@@ -41,14 +41,14 @@ video::cue { font: 500 clamp(16px, 2.6vw, 34px)/1.35 var(--font-body); backgroun
 /* Empty state */
 .empty-wrap { position: relative; z-index: 1; display: grid; place-items: center; padding: 64px 16px 16px; width: 100%; height: 100%; }
 body:not([data-mode="empty"]) .empty-wrap { display: none; }
-.empty-card { width: min(440px, 100%); border-radius: var(--r-xl); padding: var(--s-6) var(--s-5) var(--s-5); display: grid; gap: var(--s-4);
+.empty-card { width: min(440px, 100%); border-radius: var(--r-xl); padding: var(--s-6) var(--s-5) var(--s-5); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s-4);
   animation: rise var(--dur-3) var(--spring) both; }
 @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(0.98); } }
 .empty-card .empty { padding: 0; }
 .empty-card .menu-label { padding: 0 4px 6px; }
 .recent .list-row { min-height: 42px; }
 .recent .list-row .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.recent .list-row .val { color: var(--text-3); font-size: var(--t-caption); }
+.recent .list-row .val { color: var(--text-3); font-size: var(--t-caption); flex: none; max-width: 35%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent .list-row + .list-row::before { left: 12px; }
 
 /* OSD + busy + drop hint */
