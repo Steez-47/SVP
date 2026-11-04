@@ -247,9 +247,12 @@ export class Player extends EventTarget {
       if (fast && "fastSeek" in this.v) this.v.fastSeek(t); else this.v.currentTime = t;
       return;
     }
+    // in-buffer seek only where the element allows it: a piped live stream has no byte ranges, so Chromium
+    // reports seekable [0, 0] and setting currentTime there snaps back to the stream's start
     const rel = t - this.offset;
-    const b = this.v.buffered;
-    for (let k = 0; k < b.length; k++) if (rel >= b.start(k) && rel <= b.end(k) - 0.1) { this.v.currentTime = rel; return; }
+    const b = this.v.buffered, sk = this.v.seekable;
+    const inSeekable = (x) => { for (let k = 0; k < sk.length; k++) if (x >= sk.start(k) && x <= sk.end(k)) return true; return false; };
+    for (let k = 0; k < b.length; k++) if (rel >= b.start(k) && rel <= b.end(k) - 0.1 && inSeekable(rel)) { this.v.currentTime = rel; return; }
     this._liveAt(t, !this.v.paused || this._autoplay);
   }
 

@@ -1,7 +1,7 @@
 {
   "name": "svp",
   "productName": "SVP",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Steez Video Player",
   "private": true,
   "scripts": {

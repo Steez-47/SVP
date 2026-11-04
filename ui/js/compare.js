@@ -12,6 +12,13 @@ export function initCompare(app) {
   let split = 0.5, z = 1, px = 0, py = 0, fit = { x: 0, y: 0, w: 0, h: 0 };
   let frameA = 0, syncTimer = 0, active = false;
   vB.muted = true;
+  // B is silent, so let it resample instead of time-stretch: with pitch preservation on, Chromium's
+  // time-stretcher loses ~20-30 ms on every rate change and B's sync corrections went nowhere.
+  vB.preservesPitch = false;
+  // A carries the audio and follows the main volume/mute (slider, wheel, keys all drive the main <video>).
+  const main = app.player.v;
+  const syncVolume = () => { vA.volume = main.volume; vA.muted = main.muted; vB.muted = true; };
+  main.addEventListener("volumechange", () => active && syncVolume());
 
   // ---------------------------------------------------------------- picker dialog
   async function setSlot(slot, path) {
@@ -53,13 +60,16 @@ export function initCompare(app) {
     $("badges").innerHTML = "";
     const ready = (p) => new Promise((r) => { const f = () => { p.removeEventListener("ready", f); r(); }; p.addEventListener("ready", f); });
     const ra = ready(A), rb = ready(B);
+    vA.muted = vB.muted = true; // silent until both are ready
     A.open(a, { autoplay: false }); B.open(b, { autoplay: false });
     A.addEventListener("info", tags, { once: true }); B.addEventListener("info", tags, { once: true });
     await Promise.all([ra, rb]);
     layout();
     app.tl.setDuration(Math.min(A.duration || Infinity, B.duration || Infinity), A.info?.fps || 30, []);
     app.tl.loadThumbs(a, A.info);
-    vA.muted = false;
+    syncVolume();
+    frameA = 0; resetSync();
+    watchFrames();
     app.refreshTime();
     // warn on mismatched lengths (offset compressions etc.)
     if (A.info && B.info && Math.abs(A.duration - B.duration) > 0.5) Steez.toast("info", `Lengths differ by ${fmt(Math.abs(A.duration - B.duration), false, true)}. Playback stays aligned from 0:00.`);
@@ -79,7 +89,7 @@ export function initCompare(app) {
     A.close(); B.close();
     $("compare").hidden = true;
     $("btnCompare").setAttribute("aria-pressed", "false");
-    clearInterval(syncTimer);
+    clearInterval(syncTimer); endPulse(); resetSync();
     if (app.player.path) {
       app.setMode("play");
       $("title").textContent = base(app.player.path);
@@ -148,22 +158,76 @@ export function initCompare(app) {
   });
 
   // ---------------------------------------------------------------- synced transport
-  function onFrame(_, m) { frameA = m.mediaTime + (A.live ? A.offset : 0); if (active) vA.requestVideoFrameCallback(onFrame); }
+  // Sync on what is actually on screen, not currentTime: the two decoders (HW HEVC vs SW AV1, direct vs
+  // live stream) have different presentation latency, so equal currentTimes still showed B a frame late.
+  // rVFC fires once per newly presented frame; per video we average
+  //   phase = sourceTime(frame) - displayTime(frame) * rate
+  // over a short window. Both videos run off the same clock, so once the phases match they stay matched:
+  // a whole-frame mismatch is fixed with one timed playbackRate pulse on B, then we settle and measure again.
+  // (Continuous rate steering oscillated, because Chromium applies rate changes with a lag.)
+  const SETTLE = 300, WINDOW = 800;
+  const ph = { a: [], b: [] }, off = { a: 0, b: 0 };
+  let measureFrom = 0, pulseTimer = 0;
+  const tok = { a: 0, b: 0 };
+  const resetSync = (settle = SETTLE) => { ph.a = []; ph.b = []; measureFrom = performance.now() + settle; };
+  const endPulse = () => { if (pulseTimer) { clearTimeout(pulseTimer); pulseTimer = 0; vB.playbackRate = vA.playbackRate; } };
+  // one rVFC chain per video; a new src (live restart, cache swap) cancels pending callbacks, so re-arm on loadeddata
+  function track(key) {
+    const p = key === "a" ? A : B, v = p.v, t = ++tok[key];
+    const cb = (now, m) => {
+      if (!active || t !== tok[key]) return;
+      const src = m.mediaTime + (p.live ? p.offset : 0);
+      if (key === "a") frameA = src;
+      if (off[key] !== p.offset) { off[key] = p.offset; resetSync(); }
+      if (!v.paused && !v.seeking && !pulseTimer && now >= measureFrom) ph[key].push(src - (m.expectedDisplayTime / 1000) * vA.playbackRate);
+      v.requestVideoFrameCallback(cb);
+    };
+    v.requestVideoFrameCallback(cb);
+  }
+  function watchFrames() { track("a"); track("b"); }
+  vA.addEventListener("loadeddata", () => active && track("a"));
+  vB.addEventListener("loadeddata", () => active && track("b"));
+  for (const v of [vA, vB]) for (const ev of ["seeking", "emptied", "loadstart"]) v.addEventListener(ev, () => resetSync());
+
+  // trimmed mean: robust to the odd late frame, but still averages 3:2 cadences (24p on 60 Hz) properly
+  const tmean = (xs) => { const s = [...xs].sort((x, y) => x - y), k = Math.floor(s.length / 5), m = s.slice(k, s.length - k); return m.reduce((a, x) => a + x, 0) / m.length; };
+  function tick() {
+    if (!active || vA.paused || pulseTimer) return;
+    const rate = vA.playbackRate, fd = 1 / (A.info?.fps || 30);
+    if (vB.paused && !vB.seeking) B.play();
+    if (Math.abs(A.time - B.time) > 0.5) { vB.playbackRate = rate; B.seek(A.time + 0.05 * rate); resetSync(); return; }
+    if (performance.now() - measureFrom < WINDOW || ph.a.length < 8 || ph.b.length < 8) return;
+    const d = tmean(ph.a) - tmean(ph.b), c = A.time - B.time; // > 0: B is behind
+    // the presented-frame phase only refines currentTime by a few frames of decoder latency; a bigger
+    // disagreement is a start-up transient (a decoder still catching up), so measure again
+    if (Math.abs(d - c) > Math.max(0.12, 4 * fd)) { resetSync(0); return; }
+    // Only whole-frame errors are corrected. A smaller one means B's cadence locked onto the other vsync
+    // phase (30 fps on 60 Hz holds each frame for 2 vsyncs); rate pulses can't move that, so leave it.
+    if (Math.abs(d) < fd * 0.75) { resetSync(0); return; }
+    // a gentle pulse of >= 0.5 s: shorter rate blips are partly swallowed by the media pipeline
+    const k = clamp(Math.abs(d) / 0.5, 0.01, 0.12), ms = Math.min(4000, (Math.abs(d) / (k * rate)) * 1000);
+    vB.playbackRate = rate * (1 + k * Math.sign(d));
+    pulseTimer = setTimeout(() => { pulseTimer = 0; vB.playbackRate = vA.playbackRate; resetSync(); }, ms);
+  }
   vA.addEventListener("play", () => {
     if (!active) return;
-    vA.requestVideoFrameCallback(onFrame);
-    B.seek(A.time); B.play();
+    endPulse(); resetSync(400);
+    vB.playbackRate = vA.playbackRate;
+    // both were parked on the same frame by the pause handler: start together, only re-seek if they drifted
+    if (Math.abs(A.time - B.time) > 1 / (A.info?.fps || 30)) B.seek(A.time);
+    B.play();
     clearInterval(syncTimer);
-    syncTimer = setInterval(() => {
-      if (vA.paused) return;
-      const d = A.time - B.time, fd = 1 / (A.info?.fps || 30);
-      if (Math.abs(d) > 0.35) { B.seek(A.time); vB.playbackRate = vA.playbackRate; }
-      else if (Math.abs(d) > fd * 0.75) vB.playbackRate = vA.playbackRate * (1 + clamp(d * 1.5, -0.12, 0.12));
-      else vB.playbackRate = vA.playbackRate;
-    }, 120);
+    syncTimer = setInterval(tick, 100);
   });
-  vA.addEventListener("pause", () => { if (!active) return; B.pause(); clearInterval(syncTimer); vB.playbackRate = vA.playbackRate; B.seek(A.time); });
-  vA.addEventListener("ratechange", () => { vB.playbackRate = vA.playbackRate; });
+  vA.addEventListener("pause", () => {
+    if (!active) return;
+    clearInterval(syncTimer); endPulse();
+    B.pause(); vB.playbackRate = vA.playbackRate;
+    // park B on A's displayed frame (mid-frame target, robust to small pts offsets between files)
+    const fd = 1 / (A.info?.fps || 30);
+    setTimeout(() => { if (active && vA.paused) B.seek((frameA || A.time) + fd * 0.5); }, 40);
+  });
+  vA.addEventListener("ratechange", () => { endPulse(); vB.playbackRate = vA.playbackRate; resetSync(); });
   for (const ev of ["play", "seeked", "loadeddata"]) vA.addEventListener(ev, () => active && app.refreshTime());
   for (const ev of ["play", "pause"]) vA.addEventListener(ev, () => {
     const b = $("btnPlay"); if (!active) return;
@@ -183,7 +247,7 @@ export function initCompare(app) {
       const fd = 1 / (A.info?.fps || 30);
       const t = clamp((frameA || A.time) + dir * fd, 0, cmp.duration());
       frameA = t;
-      A.seek(t + fd * 0.1); B.seek(t + fd * 0.1);
+      A.seek(t + fd * 0.5); B.seek(t + fd * 0.5);
       app.refreshTime();
     },
     buffered: () => vA.buffered,

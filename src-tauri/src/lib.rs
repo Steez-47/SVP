@@ -160,23 +160,27 @@ async fn snapshot(path: String, time: f64, out_dir: Option<String>, format: Opti
 }
 
 /// Whether the installer registered SVP with Windows (Default apps / Open with).
+/// Reads the registry directly: spawning a hidden `reg.exe` is a pattern antivirus heuristics flag.
 #[tauri::command]
 fn shell_registered() -> bool {
     #[cfg(windows)]
     {
-        let mut c = ffmpeg::command("reg");
-        c.args(["query", r"HKCU\Software\RegisteredApplications", "/v", "SVP"]);
-        return c.stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+        use winreg::{enums::HKEY_CURRENT_USER, RegKey};
+        return RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey(r"Software\RegisteredApplications")
+            .and_then(|k| k.get_value::<String, _>("SVP"))
+            .is_ok();
     }
     #[allow(unreachable_code)]
     false
 }
 
 /// Open Windows Settings on SVP's Default apps page (falls back to the general page).
+/// Goes through ShellExecute: `explorer.exe <uri>` treats the query string as a path and shows a file picker.
 #[tauri::command]
 fn open_default_apps() -> Result<(), String> {
     let url = if shell_registered() { "ms-settings:defaultapps?registeredAppUser=SVP" } else { "ms-settings:defaultapps" };
-    ffmpeg::command("explorer").arg(url).spawn().map(|_| ()).map_err(|e| e.to_string())
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
