@@ -47,13 +47,39 @@ fn resolve(name: &str, over: &str) -> String {
 pub fn ffmpeg_bin() -> String { resolve("ffmpeg", &OVERRIDES.lock().0.clone()) }
 pub fn ffprobe_bin() -> String { resolve("ffprobe", &OVERRIDES.lock().1.clone()) }
 
-/// A `Command` with no console window on Windows.
+/// A `Command` with no console window on Windows. Inside an AppImage, the bundle's library and plugin
+/// overrides are dropped so system tools (ffmpeg, xdg-mime) load the system's own libraries.
 pub fn command(bin: &str) -> Command {
     let mut c = Command::new(bin);
     #[cfg(windows)]
     c.creation_flags(CREATE_NO_WINDOW);
+    #[cfg(target_os = "linux")]
+    if own_appimage().is_some() {
+        for k in APPIMAGE_ENV {
+            c.env_remove(k);
+        }
+    }
     c
 }
+
+/// Linux: (AppImage file, its mount dir) when SVP itself runs from an AppImage. `APPIMAGE`/`APPDIR`
+/// leak into child processes, so SVP started by another AppImage app inherits that app's values;
+/// only trust them when our own executable lives inside the mount.
+#[cfg(target_os = "linux")]
+pub fn own_appimage() -> Option<(PathBuf, PathBuf)> {
+    static OWN: Lazy<Option<(PathBuf, PathBuf)>> = Lazy::new(|| {
+        let image = PathBuf::from(std::env::var_os("APPIMAGE")?);
+        let dir = PathBuf::from(std::env::var_os("APPDIR")?);
+        std::env::current_exe().ok()?.starts_with(&dir).then_some((image, dir))
+    });
+    OWN.clone()
+}
+#[cfg(target_os = "linux")]
+const APPIMAGE_ENV: [&str; 12] = [
+    "LD_LIBRARY_PATH", "LD_PRELOAD", "GST_PLUGIN_PATH", "GST_PLUGIN_PATH_1_0", "GST_PLUGIN_SYSTEM_PATH",
+    "GST_PLUGIN_SYSTEM_PATH_1_0", "GST_PLUGIN_SCANNER", "GST_PLUGIN_SCANNER_1_0", "GIO_MODULE_DIR",
+    "GDK_PIXBUF_MODULE_FILE", "GTK_PATH", "GTK_EXE_PREFIX",
+];
 pub fn ffmpeg_cmd() -> Command { command(&ffmpeg_bin()) }
 pub fn ffprobe_cmd() -> Command { command(&ffprobe_bin()) }
 

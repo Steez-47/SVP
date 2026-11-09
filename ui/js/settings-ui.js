@@ -1,7 +1,7 @@
 // SVP · settings dialog. Panes are generated from a schema into Steez list rows (STZ 7.1.01) with
 // switches (2.1), native selects (3.4.02), sliders (2.6.01), theme buttons (8.1.01), appearance (8.2.01),
 // rebindable shortcuts and a hold-to-confirm reset (1.5.02).
-import { invoke, openDialog } from "./api.js";
+import { invoke, openDialog, isWindows } from "./api.js";
 import { settings, onSetting, resetSettings, DEFAULT_KEYS, KEY_LABELS } from "./settings.js";
 import { caps } from "./player.js";
 import { $, esc, bytes } from "./util.js";
@@ -137,7 +137,7 @@ export function initSettings(app) {
 
   async function fillEngine() {
     const v = await invoke("set_ffmpeg_paths", { ffmpegPath: settings.ffmpegPath, ffprobePath: settings.ffprobePath }).catch(() => null);
-    if ($("ffVer")) $("ffVer").innerHTML = v ? esc(v.replace(/Copyright.*/, "")) : `<span style="color:var(--danger)">Not found. Choose ffmpeg.exe below.</span>`;
+    if ($("ffVer")) $("ffVer").innerHTML = v ? esc(v.replace(/Copyright.*/, "")) : `<span style="color:var(--danger)">Not found. ${isWindows ? "Choose ffmpeg.exe below." : "Install ffmpeg from your package manager, or choose it below."}</span>`;
     const e = app.encoders || await invoke("encoders").catch(() => null);
     const hw = e ? [...new Set(Object.values(e).flat().filter((x) => /nvenc|amf|qsv/.test(x)))] : [];
     if ($("encList")) $("encList").textContent = hw.length ? hw.join(" · ") : "None found (CPU encoders only)";
@@ -159,7 +159,7 @@ export function initSettings(app) {
     if (e.target.closest("#outDirPick")) { const d = await openDialog({ directory: true }); if (d) { settings.outDir = d; show("export"); } }
     if (e.target.closest("#outDirReset")) { settings.outDir = ""; show("export"); }
     const bin = e.target.closest("[data-bin]");
-    if (bin) { const f = await openDialog({ multiple: false, filters: [{ name: "Executable", extensions: ["exe"] }] }); if (f) { settings[bin.dataset.bin] = f; show("engine"); } }
+    if (bin) { const f = await openDialog({ multiple: false, ...(isWindows ? { filters: [{ name: "Executable", extensions: ["exe"] }] } : {}) }); if (f) { settings[bin.dataset.bin] = f; show("engine"); } }
     if (e.target.closest("#keysReset")) { settings.keys = structuredClone(DEFAULT_KEYS); show("keys"); }
     const kb = e.target.closest("kbd[data-act]"); if (kb) capture(kb);
   });

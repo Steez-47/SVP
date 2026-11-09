@@ -1,11 +1,12 @@
-// SVP · updates from GitHub Releases + Windows default-app integration.
-// Backend: src-tauri/src/updater.rs (signed NSIS installer, passive install, relaunch).
-import { invoke, listen, isTauri } from "./api.js";
+// SVP · updates from GitHub Releases + default-app integration (Windows and Linux).
+// Backend: src-tauri/src/updater.rs (signed NSIS / AppImage / rpm / deb, install, relaunch)
+// and src-tauri/src/shell.rs (Open with registration, default video player).
+import { invoke, listen, isTauri, isWindows } from "./api.js";
 import { settings } from "./settings.js";
 import { esc, bytes } from "./util.js";
 
 export const RELEASES_URL = "https://github.com/Steez-47/SVP/releases";
-const state = { version: "", update: null, checking: false, installing: false, progress: null, error: "", checked: 0, registered: null };
+const state = { version: "", update: null, checking: false, installing: false, progress: null, error: "", checked: 0, desk: null, settingDefault: false };
 let rerender = () => {};
 
 export async function checkForUpdates({ quiet = false } = {}) {
@@ -34,12 +35,11 @@ export function aboutPane() {
   const u = state.update, busy = state.checking ? "busy" : "idle";
   const pct = state.progress?.total ? state.progress.done / state.progress.total : 0;
   const status = state.installing
-    ? (state.progress?.total ? `Downloading ${bytes(state.progress.done)} of ${bytes(state.progress.total)}` : "Installing… SVP will reopen by itself")
+    ? (state.progress?.total ? `Downloading ${bytes(state.progress.done)} of ${bytes(state.progress.total)}` : `Installing… ${isWindows ? "" : "Enter your password if asked. "}SVP will reopen by itself`)
     : state.error ? state.error
     : u ? `Version ${esc(u.version)} is ready to install`
     : state.checked ? "You're on the latest version" : "Not checked yet";
   const notes = u?.notes ? `<div class="update-notes">${esc(u.notes).replace(/\n/g, "<br>")}</div>` : "";
-  const reg = state.registered;
   return `
   <h3>Updates</h3>
   <div class="list">
@@ -56,6 +56,12 @@ export function aboutPane() {
     <div class="list-row"><span class="lbl">Check automatically<small>Looks for a new release each time SVP starts</small></span><button type="button" class="switch" role="switch" aria-checked="${settings.autoUpdate !== false}" aria-label="Check for updates automatically" data-set="autoUpdate"><span class="knob"></span></button></div>
     <div class="list-row"><span class="lbl">Release notes<small>${RELEASES_URL.replace("https://", "")}</small></span><button type="button" class="btn btn--plain btn--sm pressable" id="updReleases">Open</button></div>
   </div>
+  ${isWindows ? windowsPane() : linuxPane()}`;
+}
+
+function windowsPane() {
+  const reg = state.desk?.registered ?? null;
+  return `
   <h3>Windows</h3>
   <div class="list">
     <div class="list-row"><span class="lbl">Default video player<small>${reg === false ? "Install SVP with its installer to register it with Windows" : "Make SVP open your videos instead of Photos, Media Player or VLC"}</small></span>
@@ -64,17 +70,44 @@ export function aboutPane() {
   </div>`;
 }
 
+function linuxPane() {
+  const d = state.desk, reg = !!d?.registered, def = !!d?.isDefault;
+  return `
+  <h3>Desktop</h3>
+  <div class="list">
+    <div class="list-row"><span class="lbl">Default video player<small>${def ? "SVP opens your videos when you double-click them" : "Make SVP open every video type instead of your current player"}</small></span>
+      ${def
+        ? `<!-- STZ 5.6.01 --><span class="badge tone-ok"><svg class="i i-sm"><use href="#i-check"/></svg>Default</span>`
+        : `<!-- STZ 1.5.01 --><button type="button" class="btn btn--glass btn--sm btn-async pressable" id="setDefault" data-state="${state.settingDefault ? "busy" : "idle"}" ${d ? "" : "disabled"}>
+            <span class="a-idle">Set as default</span>
+            <span class="a-busy"><span class="ring-spin" style="width:16px;height:16px;border-width:2px"></span></span>
+            <span class="a-done"><svg class="i"><use href="#i-check"/></svg>Done</span></button>`}</div>
+    <div class="list-row"><span class="lbl">Open with<small>${reg ? "Listed for every video type. Right-click a video › Open With › SVP" : "Added when you set SVP as the default, or install the .rpm or .deb package"}</small></span>${reg ? `<span class="badge tone-ok"><svg class="i i-sm"><use href="#i-check"/></svg>Registered</span>` : `<span class="badge">Not registered</span>`}</div>
+  </div>`;
+}
+
+async function setDefault() {
+  if (isWindows) return invoke("set_default_player").catch((err) => Steez.toast("err", `Couldn't open Windows Settings: ${err}`));
+  if (state.settingDefault) return;
+  state.settingDefault = true; rerender();
+  try {
+    state.desk = await invoke("set_default_player");
+    Steez.toast("ok", "SVP is now your default video player");
+  } catch (err) { Steez.toast("err", `Couldn't set the default player: ${err}`); }
+  state.settingDefault = false; rerender();
+}
+
 export function initUpdates(app) {
   if (!isTauri) return;
   invoke("app_version").then((v) => { state.version = v; rerender(); }).catch(() => {});
-  invoke("shell_registered").then((r) => { state.registered = r; rerender(); }).catch(() => {});
+  invoke("desktop_status").then((d) => { state.desk = d; rerender(); }).catch(() => {});
   listen("update:progress", (p) => { state.progress = p; const el = document.getElementById("updStatus"); if (el && p.total) el.textContent = `Downloading ${bytes(p.done)} of ${bytes(p.total)}`; const bar = document.querySelector('[aria-label="Update download"] span'); if (bar && p.total) bar.style.setProperty("--p", p.done / p.total); else rerender(); });
   listen("update:installing", () => { state.progress = { done: 0, total: null }; window.dispatchEvent(new Event("beforeunload")); rerender(); });
   document.addEventListener("click", (e) => {
     if (e.target.closest("#updCheck")) checkForUpdates().then((u) => { const b = document.getElementById("updCheck"); if (b && !u && !state.error) { b.dataset.state = "done"; setTimeout(() => { if (b.isConnected) b.dataset.state = "idle"; }, 1800); } });
     if (e.target.closest("#updInstall")) install();
     if (e.target.closest("#updReleases")) window.__TAURI__?.opener.openUrl(RELEASES_URL);
-    if (e.target.closest("#setDefault")) invoke("open_default_apps").catch((err) => Steez.toast("err", `Couldn't open Windows Settings: ${err}`));
+    if (e.target.closest("#setDefault")) setDefault();
   });
   app.registerPaneRenderer?.("about", (render) => { rerender = render; });
   if (settings.autoUpdate !== false) setTimeout(() => checkForUpdates({ quiet: true }), 4000);
