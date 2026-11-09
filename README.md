@@ -10,6 +10,19 @@ A compact, liquid-glass video player for Windows and Linux built on Tauri v2 (Ru
 - **Compression.** Quality presets (Near-lossless → Small) or an exact target size (2-pass), H.264 / H.265 / AV1, optional VMAF score.
 - **Compare.** Two videos scaled to the same rect with a draggable split line, synced playback, frame stepping and pixel zoom.
 
+## Install
+
+Download from [Releases](https://github.com/Steez-47/SVP/releases/latest). Replace `0.1.4` with the version you download:
+
+| System | File | Install |
+|---|---|---|
+| Windows 10/11 | `SVP_0.1.4_x64-setup.exe` | Run it |
+| Fedora, RHEL, openSUSE | `SVP-0.1.4-1.x86_64.rpm` | `sudo dnf install ./SVP-0.1.4-1.x86_64.rpm` (openSUSE: `sudo zypper install ./SVP-0.1.4-1.x86_64.rpm`) |
+| Debian, Ubuntu, Mint, Pop!_OS | `SVP_0.1.4_amd64.deb` | `sudo apt install ./SVP_0.1.4_amd64.deb` |
+| Other Linux (last resort) | `SVP_0.1.4_amd64.AppImage` | `chmod +x` it and run |
+
+**On Linux, use the .rpm or .deb.** They use your system's WebKitGTK, which renders on the GPU. The AppImage bundles Ubuntu 22.04's WebKitGTK, which falls back to software rendering on current distros. Measured on Fedora 45 with an RTX 4070 SUPER at 2560×1440, a 1080p60 video with the controls showing rendered at about 17 fps from the AppImage and 60 fps from the system WebKit. Environment-variable workarounds (`WEBKIT_DISABLE_DMABUF_RENDERER`, `WEBKIT_DISABLE_COMPOSITING_MODE`, `GDK_BACKEND=x11`) made no difference. When SVP runs from the AppImage, Settings › Updates links the right package for your distro.
+
 ## Run
 
 Requires Node 20+, Rust (stable) and FFmpeg 6+ (`ffmpeg`/`ffprobe` on PATH, or set the paths in Settings → Engine).
@@ -32,7 +45,7 @@ Build dependencies (Fedora; on Debian/Ubuntu use `libwebkit2gtk-4.1-dev librsvg2
 sudo dnf install webkit2gtk4.1-devel librsvg2-devel patchelf
 ```
 
-Playback goes through GStreamer, so it needs the codec plugins: `gstreamer1-plugin-libav`, `gstreamer1-plugins-good` and `gstreamer1-plugins-bad-free` on Fedora (RPM Fusion's `ffmpeg` gives trim/compress the full encoder set, including NVENC); `gstreamer1.0-libav` and `ffmpeg` on Debian/Ubuntu. The .rpm and .deb declare these as dependencies/recommendations; the AppImage bundles GStreamer but still uses the system `ffmpeg`.
+Playback goes through GStreamer, so it needs the codec plugins: `gstreamer1-plugin-libav`, `gstreamer1-plugins-good` and `gstreamer1-plugins-bad-free` on Fedora (RPM Fusion's `ffmpeg` gives trim/compress the full encoder set, including NVENC); `gstreamer1.0-libav` and `ffmpeg` on Debian/Ubuntu. The .rpm and .deb declare these as dependencies/recommendations; the AppImage bundles GStreamer but still uses the system `ffmpeg` (and renders without the GPU, see [Install](#install)).
 
 ## Releases and updates
 

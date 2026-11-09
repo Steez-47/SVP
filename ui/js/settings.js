@@ -52,7 +52,7 @@ export const DEFAULTS = {
   outDir: "", trimMode: "lossless", trimMerge: true, snapFormat: "png",
   cxCodec: "hevc", cxEncoder: "auto", cxSpeed: "balanced", cxAudio: "copy", cxVmaf: false,
   // engine
-  ffmpegPath: "", ffprobePath: "", autoUpdate: true,
+  ffmpegPath: "", ffprobePath: "", autoUpdate: true, appimageHintShown: false,
   keys: DEFAULT_KEYS,
   recent: [], positions: {},
 };

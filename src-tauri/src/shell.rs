@@ -7,11 +7,28 @@
 //!   file managers all read.
 use serde_json::{json, Value};
 
-/// { os, registered, isDefault } for Settings › Updates & system.
+/// { os, registered, isDefault, appimage, family } for Settings › Updates & system.
+/// `appimage`: this copy runs from the AppImage, whose bundled WebKitGTK can't use the GPU on current
+/// distros (measured ~17 fps compositing on Fedora 45 + NVIDIA vs 60 with the system WebKit), so the UI
+/// points to the native package. `family`: "rpm" or "deb" when /etc/os-release says which one fits.
 #[tauri::command]
 pub fn desktop_status() -> Value {
-    json!({ "os": std::env::consts::OS, "registered": registered(), "isDefault": is_default() })
+    json!({ "os": std::env::consts::OS, "registered": registered(), "isDefault": is_default(),
+        "appimage": appimage(), "family": package_family() })
 }
+
+#[cfg(target_os = "linux")]
+fn appimage() -> bool { crate::ffmpeg::own_appimage().is_some() }
+#[cfg(not(target_os = "linux"))]
+fn appimage() -> bool { false }
+
+#[cfg(target_os = "linux")]
+fn package_family() -> Option<&'static str> {
+    let s = std::fs::read_to_string("/etc/os-release").or_else(|_| std::fs::read_to_string("/usr/lib/os-release")).ok()?;
+    linux::family_of(&s)
+}
+#[cfg(not(target_os = "linux"))]
+fn package_family() -> Option<&'static str> { None }
 
 /// Windows: open Settings on SVP's Default apps page. Linux: make SVP the default for every video type.
 #[tauri::command]
@@ -153,6 +170,18 @@ pub mod linux {
         }
     }
 
+    /// "rpm" / "deb" from os-release's ID and ID_LIKE (e.g. Nobara: ID_LIKE="rhel centos fedora").
+    pub fn family_of(os_release: &str) -> Option<&'static str> {
+        let ids: Vec<String> = os_release.lines()
+            .filter_map(|l| l.strip_prefix("ID=").or_else(|| l.strip_prefix("ID_LIKE=")))
+            .flat_map(|v| v.trim_matches(|c| c == '"' || c == '\'').split_whitespace().map(str::to_lowercase).collect::<Vec<_>>())
+            .collect();
+        let has = |names: &[&str]| ids.iter().any(|i| names.contains(&i.as_str()));
+        if has(&["fedora", "rhel", "centos", "suse", "opensuse", "mageia"]) { Some("rpm") }
+        else if has(&["debian", "ubuntu"]) { Some("deb") }
+        else { None }
+    }
+
     /// A system tool, run without the AppImage's library overrides so it loads the system's own libraries.
     fn tool(bin: &str) -> Command { crate::ffmpeg::command(bin) }
 
@@ -165,6 +194,15 @@ pub mod linux {
             assert_eq!(exec_arg(Path::new("/home/a b/SVP.AppImage")), "\"/home/a b/SVP.AppImage\"");
             assert_eq!(exec_arg(Path::new("/x/$y\"z")), "\"/x/\\\\$y\\\\\"z\"");
             assert_eq!(exec_arg(Path::new("/x/100%")), "\"/x/100%%\"");
+        }
+        #[test]
+        fn package_family() {
+            assert_eq!(family_of("NAME=\"Fedora Linux\"\nID=fedora\n"), Some("rpm"));
+            assert_eq!(family_of("ID=nobara\nID_LIKE=\"rhel centos fedora\"\n"), Some("rpm"));
+            assert_eq!(family_of("ID=\"opensuse-tumbleweed\"\nID_LIKE=\"opensuse suse\"\n"), Some("rpm"));
+            assert_eq!(family_of("ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n"), Some("deb"));
+            assert_eq!(family_of("ID=pop\nID_LIKE=\"ubuntu debian\"\n"), Some("deb"));
+            assert_eq!(family_of("ID=arch\n"), None);
         }
     }
 }

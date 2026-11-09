@@ -6,6 +6,16 @@ import { settings } from "./settings.js";
 import { esc, bytes } from "./util.js";
 
 export const RELEASES_URL = "https://github.com/Steez-47/SVP/releases";
+
+// The AppImage bundles Ubuntu 22.04's WebKitGTK, which composites in software on current distros (~17 fps with
+// the controls over a playing video, vs 60 with the system WebKit). Native packages use the system WebKit.
+const PKG = {
+  rpm: { file: (v) => `SVP-${v}-1.x86_64.rpm`, label: ".rpm", distros: "Fedora, openSUSE" },
+  deb: { file: (v) => `SVP_${v}_amd64.deb`, label: ".deb", distros: "Debian, Ubuntu, Mint" },
+};
+const pkgVersion = () => state.update?.version || state.version;
+const pkgUrl = (fam) => (PKG[fam] && pkgVersion() ? `${RELEASES_URL}/download/v${pkgVersion()}/${PKG[fam].file(pkgVersion())}` : `${RELEASES_URL}/latest`);
+const openPkg = (fam) => window.__TAURI__?.opener.openUrl(pkgUrl(fam));
 const state = { version: "", update: null, checking: false, installing: false, progress: null, error: "", checked: 0, desk: null, settingDefault: false };
 let rerender = () => {};
 
@@ -72,9 +82,15 @@ function windowsPane() {
 
 function linuxPane() {
   const d = state.desk, reg = !!d?.registered, def = !!d?.isDefault;
+  const p = PKG[d?.family], v = pkgVersion();
+  const gpuRow = d?.appimage ? `
+    <div class="list-row"><span class="lbl">Smooth playback<small>This AppImage draws video without your GPU, so playback stutters while the controls are showing. ${p && v
+        ? `Install <span class="tnum">${esc(p.file(v))}</span> instead`
+        : `Install the .rpm (${PKG.rpm.distros}) or .deb (${PKG.deb.distros}) instead`}</small></span>
+      <!-- STZ 1.1.10 --><button type="button" class="btn btn--filled btn--sm pressable" id="getPackage"><svg class="i"><use href="#i-download"/></svg>${p ? `Get ${p.label}` : "Downloads"}</button></div>` : "";
   return `
   <h3>Desktop</h3>
-  <div class="list">
+  <div class="list">${gpuRow}
     <div class="list-row"><span class="lbl">Default video player<small>${def ? "SVP opens your videos when you double-click them" : "Make SVP open every video type instead of your current player"}</small></span>
       ${def
         ? `<!-- STZ 5.6.01 --><span class="badge tone-ok"><svg class="i i-sm"><use href="#i-check"/></svg>Default</span>`
@@ -99,8 +115,15 @@ async function setDefault() {
 
 export function initUpdates(app) {
   if (!isTauri) return;
-  invoke("app_version").then((v) => { state.version = v; rerender(); }).catch(() => {});
-  invoke("desktop_status").then((d) => { state.desk = d; rerender(); }).catch(() => {});
+  const version = invoke("app_version").then((v) => { state.version = v; rerender(); }).catch(() => {});
+  const desk = invoke("desktop_status").then((d) => { state.desk = d; rerender(); return d; }).catch(() => null);
+  Promise.all([desk, version]).then(([d]) => {
+    if (!d?.appimage || settings.appimageHintShown) return;
+    settings.appimageHintShown = true;
+    const p = PKG[d.family];
+    Steez.toast("info", `For smooth playback, install the ${p ? p.label : ".rpm or .deb"} package. This AppImage can't use your GPU.`,
+      { action: p ? `Get ${p.label}` : "Downloads", onAction: () => openPkg(d.family), ms: 12000 });
+  });
   listen("update:progress", (p) => { state.progress = p; const el = document.getElementById("updStatus"); if (el && p.total) el.textContent = `Downloading ${bytes(p.done)} of ${bytes(p.total)}`; const bar = document.querySelector('[aria-label="Update download"] span'); if (bar && p.total) bar.style.setProperty("--p", p.done / p.total); else rerender(); });
   listen("update:installing", () => { state.progress = { done: 0, total: null }; window.dispatchEvent(new Event("beforeunload")); rerender(); });
   document.addEventListener("click", (e) => {
@@ -108,6 +131,7 @@ export function initUpdates(app) {
     if (e.target.closest("#updInstall")) install();
     if (e.target.closest("#updReleases")) window.__TAURI__?.opener.openUrl(RELEASES_URL);
     if (e.target.closest("#setDefault")) setDefault();
+    if (e.target.closest("#getPackage")) openPkg(state.desk?.family);
   });
   app.registerPaneRenderer?.("about", (render) => { rerender = render; });
   if (settings.autoUpdate !== false) setTimeout(() => checkForUpdates({ quiet: true }), 4000);
