@@ -14,6 +14,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Version for the release notes (tag without the leading v)
+        shell: bash
+        run: echo "VER=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -40,7 +43,14 @@ jobs:
           args: -- --locked
           tagName: ${{ github.ref_name }}
           releaseName: SVP ${{ github.ref_name }}
-          releaseBody: Download the SVP installer below. Installed copies update themselves from Settings › Updates.
+          releaseBody: |
+            Pick the file for your system:
+            - **Windows:** `SVP_${{ env.VER }}_x64-setup.exe`
+            - **Fedora, RHEL, openSUSE:** `SVP-${{ env.VER }}-1.x86_64.rpm` (`sudo dnf install ./SVP-${{ env.VER }}-1.x86_64.rpm`)
+            - **Debian, Ubuntu, Mint:** `SVP_${{ env.VER }}_amd64.deb` (`sudo apt install ./SVP_${{ env.VER }}_amd64.deb`)
+            - **Other Linux:** `SVP_${{ env.VER }}_amd64.AppImage`, last resort only. It bundles an older WebKitGTK that renders without the GPU, so video stutters while the controls are showing.
+
+            Installed copies update themselves from Settings › Updates.
           releaseDraft: false
           prerelease: false
           updaterJsonPreferNsis: true
@@ -51,6 +61,9 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - name: Version for the release notes (tag without the leading v)
+        shell: bash
+        run: echo "VER=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
       - name: Install WebKitGTK and GStreamer (AppImage bundles the media framework)
         run: |
           sudo apt-get update
@@ -76,6 +89,13 @@ jobs:
           args: -- --locked
           tagName: ${{ github.ref_name }}
           releaseName: SVP ${{ github.ref_name }}
-          releaseBody: Download the SVP installer below. Installed copies update themselves from Settings › Updates.
+          releaseBody: |
+            Pick the file for your system:
+            - **Windows:** `SVP_${{ env.VER }}_x64-setup.exe`
+            - **Fedora, RHEL, openSUSE:** `SVP-${{ env.VER }}-1.x86_64.rpm` (`sudo dnf install ./SVP-${{ env.VER }}-1.x86_64.rpm`)
+            - **Debian, Ubuntu, Mint:** `SVP_${{ env.VER }}_amd64.deb` (`sudo apt install ./SVP_${{ env.VER }}_amd64.deb`)
+            - **Other Linux:** `SVP_${{ env.VER }}_amd64.AppImage`, last resort only. It bundles an older WebKitGTK that renders without the GPU, so video stutters while the controls are showing.
+
+            Installed copies update themselves from Settings › Updates.
           releaseDraft: false
           prerelease: false
