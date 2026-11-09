@@ -148,6 +148,7 @@ export class Player extends EventTarget {
 
   _setDirect(path, at) {
     this.mode = "direct";
+    this._calibOn = false; this._calibS = null; // a previous live stream's calibration must not block the frame ring
     this.v.src = url.file(path);
     this._pendingSeek = at > 0 ? at : 0;
     this.emit("mode", this.mode);
@@ -199,7 +200,7 @@ export class Player extends EventTarget {
       const t = this.time, wasPlaying = !this.v.paused || (this.v.readyState < 3 && this._autoplay);
       this.cachePath = out;
       this.mode = "direct";
-      this.offset = 0;
+      this.offset = 0; this._calibOn = false; this._calibS = null;
       this.v.src = url.file(out);
       this._pendingSeek = t; this._autoplay = wasPlaying;
       this.emit("mode", "cached");

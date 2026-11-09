@@ -1,6 +1,7 @@
 // SVP · bridge to the Rust backend (Tauri invoke + local media server URLs).
 const T = window.__TAURI__;
 export const isTauri = !!T;
+export const isWindows = /Windows/.test(navigator.userAgent);
 export const invoke = (cmd, args) => (T ? T.core.invoke(cmd, args) : Promise.reject(new Error("Not running inside SVP")));
 export const listen = (ev, cb) => (T ? T.event.listen(ev, (e) => cb(e.payload)) : Promise.resolve(() => {}));
 export const win = () => T?.window.getCurrentWindow();

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name={{name}}
+GenericName=Video Player
+Comment={{comment}}
+Exec={{exec}} %F
+Icon={{icon}}
+StartupWMClass={{exec}}
+Terminal=false
+Categories=AudioVideo;Video;Player;
+Keywords=video;player;movie;frame;trim;compress;
+MimeType=video/mp4;video/x-m4v;video/matroska;video/x-matroska;video/quicktime;video/webm;video/vnd.avi;video/x-msvideo;video/avi;video/x-ms-wmv;application/vnd.ms-asf;video/x-ms-asf;video/x-flv;video/mp2t;video/mpeg;video/ogg;video/x-ogm+ogg;video/3gpp;video/3gpp2;application/mxf;video/dv;application/vnd.rn-realmedia;application/vnd.rn-realmedia-vbr;

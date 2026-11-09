@@ -2,6 +2,7 @@ mod compress;
 mod ffmpeg;
 mod jobs;
 mod server;
+mod shell;
 mod trim;
 mod updater;
 
@@ -27,6 +28,7 @@ fn boot() -> Value {
         "token": server::token(),
         "file": file_arg(&std::env::args().collect::<Vec<_>>()),
         "ffmpeg": ffmpeg::version(),
+        "os": std::env::consts::OS,
     })
 }
 
@@ -159,30 +161,6 @@ async fn snapshot(path: String, time: f64, out_dir: Option<String>, format: Opti
     }).await.map_err(|e| e.to_string())?
 }
 
-/// Whether the installer registered SVP with Windows (Default apps / Open with).
-/// Reads the registry directly: spawning a hidden `reg.exe` is a pattern antivirus heuristics flag.
-#[tauri::command]
-fn shell_registered() -> bool {
-    #[cfg(windows)]
-    {
-        use winreg::{enums::HKEY_CURRENT_USER, RegKey};
-        return RegKey::predef(HKEY_CURRENT_USER)
-            .open_subkey(r"Software\RegisteredApplications")
-            .and_then(|k| k.get_value::<String, _>("SVP"))
-            .is_ok();
-    }
-    #[allow(unreachable_code)]
-    false
-}
-
-/// Open Windows Settings on SVP's Default apps page (falls back to the general page).
-/// Goes through ShellExecute: `explorer.exe <uri>` treats the query string as a path and shows a file picker.
-#[tauri::command]
-fn open_default_apps() -> Result<(), String> {
-    let url = if shell_registered() { "ms-settings:defaultapps?registeredAppUser=SVP" } else { "ms-settings:defaultapps" };
-    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|e| e.to_string())
-}
-
 #[tauri::command]
 fn app_version(app: AppHandle) -> String { app.package_info().version.to_string() }
 
@@ -206,7 +184,7 @@ pub fn run() {
             boot, set_ffmpeg_paths, probe, keyframes, encoders, trim_start, compress_start,
             job_cancel, jobs_list, jobs_clear, file_info, cache_remux, cache_cancel, snapshot,
             updater::update_check, updater::update_install, app_version,
-            shell_registered, open_default_apps
+            shell::desktop_status, shell::set_default_player
         ])
         .run(tauri::generate_context!())
         .expect("error while running SVP");
