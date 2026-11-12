@@ -16,6 +16,8 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 
 static PORT: AtomicU16 = AtomicU16::new(0);
+/// Linux: the UI may hand `file://` URLs to its <video> elements (see `allow_file_urls`).
+static FILE_URLS: AtomicBool = AtomicBool::new(false);
 
 fn file_arg(args: &[String]) -> Option<String> {
     args.iter().skip(1).find(|a| !a.starts_with('-') && std::path::Path::new(a).is_file()).cloned()
@@ -29,8 +31,14 @@ fn boot() -> Value {
         "file": file_arg(&std::env::args().collect::<Vec<_>>()),
         "ffmpeg": ffmpeg::version(),
         "os": std::env::consts::OS,
+        "log": std::env::var("SVP_LOG").ok(),
+        "fileUrls": FILE_URLS.load(Ordering::Relaxed),
     })
 }
+
+/// Diagnostics: `SVP_LOG=1 svp file.mp4` prints the UI's playback log to stderr (see ui/js/diag.js).
+#[tauri::command]
+fn debug_log(msg: String) { eprintln!("[svp] {msg}"); }
 
 #[tauri::command]
 fn set_ffmpeg_paths(ffmpeg_path: String, ffprobe_path: String) -> Option<String> {
@@ -89,13 +97,22 @@ fn file_info(path: String) -> Result<Value, String> {
 static CACHE_CANCEL: Lazy<Mutex<Arc<AtomicBool>>> = Lazy::new(|| Mutex::new(Arc::new(AtomicBool::new(false))));
 
 fn cache_dir() -> PathBuf {
-    let d = std::env::temp_dir().join("svp-cache");
+    let d = ffmpeg::scratch_dir().join("svp-cache");
     let _ = std::fs::create_dir_all(&d);
     d
 }
 
 /// Drop cache files older than 3 days, then oldest-first until the cache is under 20 GB.
 fn prune_cache() {
+    // Linux: versions up to 0.1.4 cached in /tmp (RAM), and a crash can leave a joined trim's parts behind.
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::fs::remove_dir_all(std::env::temp_dir().join("svp-cache"));
+        let day_old = |p: &Path| p.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|d| d.as_secs() > 86400);
+        for e in std::fs::read_dir(ffmpeg::scratch_dir()).into_iter().flatten().flatten() {
+            if e.file_name().to_string_lossy().starts_with("svp-trim-") && day_old(&e.path()) { let _ = std::fs::remove_dir_all(e.path()); }
+        }
+    }
     let Ok(rd) = std::fs::read_dir(cache_dir()) else { return };
     let mut files: Vec<(PathBuf, std::time::SystemTime, u64)> = rd.flatten()
         .filter_map(|e| { let m = e.metadata().ok()?; Some((e.path(), m.modified().ok()?, m.len())) }).collect();
@@ -164,6 +181,25 @@ async fn snapshot(path: String, time: f64, out_dir: Option<String>, format: Opti
 #[tauri::command]
 fn app_version(app: AppHandle) -> String { app.package_info().version.to_string() }
 
+/// Linux: let SVP's own pages (tauri://localhost) play local files as `file://` URLs.
+/// WebKitGTK plays HTTP media through its network process: with preload="auto" it first copies the whole
+/// file to /var/tmp as fast as the disk allows (14 GB for a 14 GB video) and stalls for good on a seek
+/// past what it has copied; without it, seeks during playback hang. A `file://` source is read by
+/// GStreamer directly: nothing is copied and seeks land in ~30 ms instead of ~250.
+/// WebKit only lets "local" origins load `file://`, so the app's scheme is registered as one. That gives
+/// the bundled UI nothing new: it already reads any file through the media server.
+#[cfg(target_os = "linux")]
+fn allow_file_urls(app: &tauri::App) {
+    let Some(w) = app.get_webview_window("main") else { return };
+    let _ = w.with_webview(|wv| {
+        use webkit2gtk::{SecurityManagerExt, WebContextExt, WebViewExt};
+        if let Some(sm) = wv.inner().context().and_then(|c| c.security_manager()) {
+            sm.register_uri_scheme_as_local("tauri");
+            FILE_URLS.store(true, Ordering::Relaxed);
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     PORT.store(server::start(), Ordering::Relaxed);
@@ -180,11 +216,17 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            #[cfg(target_os = "linux")]
+            allow_file_urls(app);
+            let _ = app;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
-            boot, set_ffmpeg_paths, probe, keyframes, encoders, trim_start, compress_start,
+            boot, debug_log, set_ffmpeg_paths, probe, keyframes, encoders, trim_start, compress_start,
             job_cancel, jobs_list, jobs_clear, file_info, cache_remux, cache_cancel, snapshot,
             updater::update_check, updater::update_install, app_version,
-            shell::desktop_status, shell::set_default_player
+            shell::desktop_status, shell::set_default_player, server::live_pace
         ])
         .run(tauri::generate_context!())
         .expect("error while running SVP");

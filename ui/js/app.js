@@ -27,9 +27,10 @@ export const app = { player, cache, tl, state, settings, osd, openFile, setMode,
 
   try {
     const b = await invoke("boot");
-    setServer(b.port, b.token);
+    setServer(b.port, b.token, b.fileUrls);
     if (settings.ffmpegPath || settings.ffprobePath) await invoke("set_ffmpeg_paths", { ffmpegPath: settings.ffmpegPath, ffprobePath: settings.ffprobePath });
     if (!b.ffmpeg) Steez.toast("err", "FFmpeg wasn't found. Set its location in Settings → Engine.", { ms: 8000 });
+    if (b.log) (await import("./diag.js")).initDiag(app, b.log);
     if (b.file) openFile(b.file);
     invoke("encoders").then((e) => { state.encoders = e; player.encoders = e; app.encoders = e; }).catch(() => {});
   } catch (e) { console.warn(e); }
@@ -57,7 +58,7 @@ export async function openFile(path, opts = {}) {
   if (body.dataset.mode === "compare") app.exitCompare?.();
   savePos();
   setMode("play");
-  state.frameT = 0; state.stepping = false; state.keyframes = []; clearSubs();
+  state.frameT = 0; state.stepping = false; state.keyframes = []; keyframesFor = ""; player.keyframes = null; clearSubs();
   $("title").textContent = base(path);
   win()?.setTitle(`${base(path)} · SVP`).catch(() => {});
   $("badges").innerHTML = "";
@@ -77,18 +78,30 @@ player.addEventListener("info", ({ detail: i }) => {
   tl.setDuration(i.duration, i.fps, i.chapters);
   tl.loadThumbs(i.path, i);
   renderBadges(); renderTracks(); renderTime();
-  if (!$("infoPanel").hidden) renderInfo();
+  if (!$("infoPanel").hidden) { loadKeyframes(); renderInfo(); }
   if (!i.video && !i.audio.length) Steez.toast("err", "No playable video or audio streams in this file.");
+  autoSubs(i);
+});
+player.addEventListener("mode", ({ detail }) => { renderBadges(); if (detail === "remux") loadKeyframes(); if (detail === "cached") osd("Full seeking ready"); });
+
+// Keyframe times. Listing them makes ffprobe read every packet, which for most containers is the whole
+// file (14 GB for a 14 GB video), so it waits until something uses them: trim mode, the info panel, or a
+// live remux, whose seeks have to start on a keyframe.
+let keyframesFor = "";
+function loadKeyframes() {
+  const i = player.info;
+  if (!i?.video || keyframesFor === i.path) return;
+  keyframesFor = i.path;
   invoke("keyframes", { path: i.path }).then((k) => {
     if (player.path !== i.path) return;
     state.keyframes = k.map((t) => t - (i.start || 0));
     player.keyframes = k;
     tl.setKeyframes(state.keyframes);
     app.onKeyframes?.(state.keyframes);
-  }).catch(() => {});
-  autoSubs(i);
-});
-player.addEventListener("mode", ({ detail }) => { renderBadges(); if (detail === "cached") osd("Full seeking ready"); });
+    if (!$("infoPanel").hidden) renderInfo();
+  }).catch(() => { if (keyframesFor === i.path) keyframesFor = ""; });
+}
+app.loadKeyframes = loadKeyframes;
 player.addEventListener("busy", ({ detail }) => (detail ? showBusy(detail) : hideBusy()));
 player.addEventListener("ready", () => { hideBusy(); renderTime(); });
 player.addEventListener("fail", ({ detail }) => { hideBusy(); Steez.toast("err", `Can't open this file: ${detail}`, { ms: 7000 }); });
@@ -112,12 +125,14 @@ function renderBadges() {
 }
 
 // ---------------------------------------------------------------- time + render loop
+// This runs every frame while playing: only touch the DOM when the text really changes (once a second).
+const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
 const cmpOn = () => body.dataset.mode === "compare" && app.cmp?.active;
 function renderTime() {
   if (cmpOn()) {
     const c = app.cmp, t = c.time(), d = c.duration(), fps = c.fps?.() || 30;
-    $("tCur").textContent = state.timeMode === "frames" ? timecode(t, fps) : fmt(t, d >= 3600);
-    $("tDur").textContent = state.timeMode === "frames" ? timecode(d, fps) : fmt(d, d >= 3600);
+    setText($("tCur"), state.timeMode === "frames" ? timecode(t, fps) : fmt(t, d >= 3600));
+    setText($("tDur"), state.timeMode === "frames" ? timecode(d, fps) : fmt(d, d >= 3600));
     if (!state.scrubbing) tl.update(t, 0, 0);
     return;
   }
@@ -127,7 +142,7 @@ function renderTime() {
   if (state.timeMode === "frames" && i?.fps) { cur = timecode(t, i.fps); dur = timecode(d, i.fps); }
   else if (state.timeMode === "remaining") { cur = `-${fmt(d - t, hrs)}`; dur = fmt(d, hrs); }
   else { cur = fmt(t, hrs); dur = fmt(d, hrs); }
-  $("tCur").textContent = cur; $("tDur").textContent = dur;
+  setText($("tCur"), cur); setText($("tDur"), dur);
   let bs = 0, be = 0;
   const b = video.buffered;
   const rel = player.live ? player.time - player.offset : video.currentTime;
@@ -354,7 +369,7 @@ function renderInfo() {
   if (i.subs.length) h += `<h5>Subtitles</h5>` + kv(i.subs.map((s, n) => [`Track ${n + 1}`, trackLabel(s, n)]));
   $("infoBody").innerHTML = h;
 }
-function toggleInfo(force) { const p = $("infoPanel"); p.hidden = force != null ? !force : !p.hidden; if (!p.hidden) renderInfo(); }
+function toggleInfo(force) { const p = $("infoPanel"); p.hidden = force != null ? !force : !p.hidden; if (!p.hidden) { loadKeyframes(); renderInfo(); } }
 $("mInfo").onclick = () => toggleInfo(true);
 $("infoClose").onclick = () => toggleInfo(false);
 $("mReveal").onclick = () => player.path && reveal(player.path);

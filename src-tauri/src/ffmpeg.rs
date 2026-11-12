@@ -80,6 +80,14 @@ const APPIMAGE_ENV: [&str; 12] = [
     "GST_PLUGIN_SYSTEM_PATH_1_0", "GST_PLUGIN_SCANNER", "GST_PLUGIN_SCANNER_1_0", "GIO_MODULE_DIR",
     "GDK_PIXBUF_MODULE_FILE", "GTK_PATH", "GTK_EXE_PREFIX",
 ];
+/// Where large scratch files go (cached remuxes, the parts of a joined trim).
+/// On Linux `/tmp` is usually tmpfs, which is RAM: a cached remux of a 20 GB film there is 20 GB of memory.
+/// The user's cache directory is on disk.
+pub fn scratch_dir() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    if let Some(d) = dirs::cache_dir() { return d; }
+    std::env::temp_dir()
+}
 pub fn ffmpeg_cmd() -> Command { command(&ffmpeg_bin()) }
 pub fn ffprobe_cmd() -> Command { command(&ffprobe_bin()) }
 

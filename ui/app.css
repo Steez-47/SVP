@@ -6,8 +6,10 @@
 html, body.svp { overflow: hidden; background: var(--bg); user-select: none; -webkit-user-select: none; }
 body.svp { --dock-w: min(860px, calc(100vw - 24px)); }
 body.svp:not([data-mode="empty"]) { background: #000; }
-body.svp:not([data-mode="empty"]) .wallpaper { opacity: 0; }
-.wallpaper { transition: opacity var(--dur-3) var(--ease-out); }
+/* Behind a video the wallpaper must not exist at all. At opacity 0 WebKitGTK kept animating its blobs and
+   repainting its film grain (a tiled SVG filter), which froze the UI for seconds and took gigabytes of memory. */
+body.svp:not([data-mode="empty"]) .wallpaper { opacity: 0; display: none; }
+.wallpaper { transition: opacity var(--dur-3) var(--ease-out), display var(--dur-3) allow-discrete; }
 .tnum { font-variant-numeric: tabular-nums; }
 .row-tight { display: flex; align-items: center; gap: var(--s-1); }
 [hidden] { display: none !important; }

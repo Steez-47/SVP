@@ -3,6 +3,7 @@
 //! Routes (all GET, all require `k=<token>`):
 //!   /file?p=PATH                         byte-range file serving (direct playback, instant)
 //!   /live?p=PATH&t=SEC&v=copy|ENC&a=N    fragmented-MP4 stream from ffmpeg (remux / realtime transcode), restart on seek
+//!                                        Linux adds id=ID&r=SPEED&hold=0|1: the stream is paced to playback (see `Pace`)
 //!   /frames?p=PATH&t=SEC&d=SEC&w=W&h=H   decoded frame window as records [f64 pts LE][u32 len LE][jpeg]
 //!   /thumbs?p=PATH&n=N&h=H               N evenly spaced keyframe thumbnails, same record format
 //!   /subs?p=PATH&i=STREAM                subtitle stream (or external file with i=0) as WebVTT
@@ -14,9 +15,10 @@ use std::fs::File;
 use std::hash::{BuildHasher, Hasher};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::process::{Child, ChildStdout, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU32, Ordering};
 use std::sync::mpsc::{self, Receiver, SyncSender};
-use std::sync::OnceLock;
-use std::time::Duration;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tiny_http::{Header, Request, Response, Server, StatusCode};
 
 static TOKEN: OnceLock<String> = OnceLock::new();
@@ -70,7 +72,10 @@ fn handle(req: Request) {
     let num = |k: &str, d: f64| q.get(k).and_then(|v| v.parse::<f64>().ok()).unwrap_or(d);
     match path.as_str() {
         "/file" => serve_file(req, &p),
-        "/live" => serve_live(req, &p, num("t", 0.0), q.get("v").map(String::as_str).unwrap_or("copy"), num("a", 0.0) as i64, q.get("vf").cloned()),
+        "/live" => {
+            let pace = q.get("id").filter(|_| PACED).map(|id| Pace::register(id, num("r", 1.0), q.get("hold").is_some_and(|h| h == "1")));
+            serve_live(req, &p, num("t", 0.0), q.get("v").map(String::as_str).unwrap_or("copy"), num("a", 0.0) as i64, q.get("vf").cloned(), pace)
+        }
         "/frames" => serve_frames(req, &p, num("t", 0.0), num("d", 2.0), num("w", 1280.0) as u32, num("h", 720.0) as u32),
         "/thumbs" => serve_thumbs(req, &p, num("n", 120.0) as u32, num("h", 90.0) as u32),
         "/subs" => serve_subs(req, &p, num("i", 0.0) as i64),
@@ -94,6 +99,12 @@ fn mime(p: &str) -> &'static str {
 }
 
 // ---------------------------------------------------------------- /file
+/// Send `Content-Length` instead of tiny_http's default of chunking every body over 32 KB.
+/// WebKitGTK's GStreamer source only treats a response as seekable when it knows the length; without it
+/// an MP4 whose index sits at the end of the file fails to load ("no 'moov' atom within the first 10 MB")
+/// and every other file plays with no duration and no seeking.
+fn sized<R: Read>(r: Response<R>) -> Response<R> { r.with_chunked_threshold(usize::MAX) }
+
 fn serve_file(req: Request, p: &str) {
     let Ok(mut f) = File::open(p) else { return err(req, 404, "file not found") };
     let len = f.metadata().map(|m| m.len()).unwrap_or(0);
@@ -115,9 +126,9 @@ fn serve_file(req: Request, p: &str) {
         let _ = f.seek(SeekFrom::Start(start));
         let mut h = base;
         h.push(hdr("Content-Range", &format!("bytes {start}-{end}/{len}")));
-        let _ = req.respond(Response::new(StatusCode(206), h, BufReader::with_capacity(1 << 20, f.take(n)), Some(n as usize), None));
+        let _ = req.respond(sized(Response::new(StatusCode(206), h, BufReader::with_capacity(1 << 20, f.take(n)), Some(n as usize), None)));
     } else {
-        let _ = req.respond(Response::new(StatusCode(200), base, BufReader::with_capacity(1 << 20, f), Some(len as usize), None));
+        let _ = req.respond(sized(Response::new(StatusCode(200), base, BufReader::with_capacity(1 << 20, f), Some(len as usize), None)));
     }
 }
 
@@ -141,10 +152,77 @@ impl Read for ChanReader {
 }
 
 // ---------------------------------------------------------------- /live
+/// Linux only. WebKitGTK never pushes back on a stream it can't seek: whatever the server sends, it keeps
+/// in memory. ffmpeg remuxes at around 1 GB/s, so an unpaced stream filled RAM within seconds, and a paused
+/// one kept growing. (Chromium reads only what it is about to play, which stalls ffmpeg through the pipe.)
+/// So here the server holds ffmpeg to `LEAD` seconds of media ahead of playback. It knows how far ffmpeg
+/// has got from `-progress`, and how playback moves from the UI: `live_pace` reports speed and pause.
+const PACED: bool = cfg!(target_os = "linux");
+const LEAD: f64 = 10.0;
+
+pub struct Pace {
+    id: String,
+    /// playback speed × 1000
+    rate: AtomicU32,
+    hold: AtomicBool,
+    /// media time ffmpeg has written, in µs from the start of this stream
+    produced: AtomicI64,
+}
+static PACES: Mutex<Vec<Arc<Pace>>> = Mutex::new(Vec::new());
+
+impl Pace {
+    fn register(id: &str, rate: f64, hold: bool) -> Arc<Pace> {
+        let p = Arc::new(Pace { id: id.into(), rate: AtomicU32::new(0), hold: AtomicBool::new(hold), produced: AtomicI64::new(0) });
+        p.set(rate, hold);
+        PACES.lock().unwrap().push(p.clone());
+        p
+    }
+    fn set(&self, rate: f64, hold: bool) {
+        self.rate.store((rate.clamp(0.1, 16.0) * 1000.0) as u32, Ordering::Relaxed);
+        self.hold.store(hold, Ordering::Relaxed);
+    }
+}
+
+/// The UI's playback state for one live stream. Unknown ids (stream already gone, other systems) are ignored.
+#[tauri::command]
+pub fn live_pace(id: String, rate: f64, hold: bool) {
+    if let Some(p) = PACES.lock().unwrap().iter().find(|p| p.id == id) { p.set(rate, hold); }
+}
+
+/// ffmpeg's stdout for a /live response: kills ffmpeg when the client leaves and, when paced, only reads on
+/// while ffmpeg is less than `LEAD` seconds ahead of playback (a full pipe then stops ffmpeg by itself).
+struct LiveBody { child: Child, out: ChildStdout, pace: Option<Arc<Pace>>, played: f64, at: Instant }
+impl Read for LiveBody {
+    fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
+        if let Some(p) = self.pace.clone() {
+            // Never wait longer than 2 s in one go: only the write that follows a read notices that the
+            // client has gone, and a paused stream that never noticed would keep its ffmpeg forever.
+            for _ in 0..80 {
+                let now = Instant::now();
+                if !p.hold.load(Ordering::Relaxed) {
+                    self.played += now.duration_since(self.at).as_secs_f64() * p.rate.load(Ordering::Relaxed) as f64 / 1000.0;
+                }
+                self.at = now;
+                if p.produced.load(Ordering::Relaxed) as f64 / 1e6 <= self.played + LEAD { break; }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        }
+        self.out.read(b)
+    }
+}
+impl Drop for LiveBody {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        if let Some(p) = &self.pace { PACES.lock().unwrap().retain(|x| !Arc::ptr_eq(x, p)); }
+    }
+}
+
 /// `v` = "copy" (remux: container/audio unsupported) or an encoder name for realtime transcode.
-fn serve_live(req: Request, p: &str, t: f64, v: &str, a: i64, vf: Option<String>) {
+fn serve_live(req: Request, p: &str, t: f64, v: &str, a: i64, vf: Option<String>, pace: Option<Arc<Pace>>) {
     let mut c = ffmpeg::ffmpeg_cmd();
     c.args(["-hide_banner", "-nostdin", "-v", "error"]);
+    if pace.is_some() { c.args(["-nostats", "-progress", "pipe:2", "-stats_period", "0.2"]); }
     if v != "copy" { c.args(["-hwaccel", "auto"]); }
     if t > 0.0 { c.args(["-ss", &format!("{t:.3}")]); }
     c.args(["-i", p, "-map", "0:v:0?", "-map", &format!("0:a:{a}?"), "-sn", "-dn"]);
@@ -165,10 +243,19 @@ fn serve_live(req: Request, p: &str, t: f64, v: &str, a: i64, vf: Option<String>
     }
     c.args(["-c:a", "aac", "-b:a", "192k", "-ac", "2",
             "-f", "mp4", "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-frag_duration", "400000", "pipe:1"]);
-    c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    c.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(if pace.is_some() { Stdio::piped() } else { Stdio::null() });
     let Ok(mut child) = c.spawn() else { return err(req, 500, "ffmpeg missing") };
     let out = child.stdout.take().unwrap();
-    let body = KillOnDrop { child, out };
+    if let (Some(pace), Some(stderr)) = (pace.clone(), child.stderr.take()) {
+        std::thread::spawn(move || {
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                if let Some(us) = line.strip_prefix("out_time_us=").and_then(|v| v.trim().parse::<i64>().ok()) {
+                    pace.produced.store(us, Ordering::Relaxed);
+                }
+            }
+        });
+    }
+    let body = LiveBody { child, out, pace, played: 0.0, at: Instant::now() };
     let _ = req.respond(Response::new(StatusCode(200), vec![cors(), hdr("Content-Type", "video/mp4"), hdr("Cache-Control", "no-store")], body, None, None));
 }
 
@@ -261,7 +348,11 @@ fn serve_thumbs(req: Request, p: &str, n: u32, h: u32) {
     if dur <= 0.0 { return err(req, 422, "unknown duration"); }
     let rate = (n.max(1) as f64 / dur).max(0.0001);
     let args = vec![
-        s("-skip_frame"), s("nokey"), s("-i"), s(p),
+        // -discard: the demuxer skips everything but keyframes without reading it (MP4/MOV: 339 MB instead of
+        // all 14 GB of a 14 GB file, 3 s instead of 23). -skip_frame covers demuxers that ignore it.
+        // -hwaccel: a 4K film has well over 1000 keyframes; on the CPU they took 31 s of CPU time across every
+        // core while the video was starting (1.6 s on the GPU, same thumbnails).
+        s("-hwaccel"), s("auto"), s("-discard:v"), s("nokey"), s("-skip_frame"), s("nokey"), s("-i"), s(p),
         s("-map"), s("0:v:0"), s("-an"), s("-sn"), s("-dn"),
         s("-vf"), format!("fps={rate:.6}:round=near,scale=-2:{}:flags=bilinear,showinfo", h.clamp(32, 360) & !1),
         s("-c:v"), s("mjpeg"), s("-q:v"), s("5"), s("-f"), s("image2pipe"), s("pipe:1"),
