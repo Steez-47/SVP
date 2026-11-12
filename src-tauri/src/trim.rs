@@ -58,7 +58,7 @@ struct TempDir(PathBuf);
 impl TempDir {
     fn new() -> Result<Self, String> {
         loop {
-            let p = std::env::temp_dir().join(format!("svp-trim-{}-{}", std::process::id(), TEMP_ID.fetch_add(1, Ordering::Relaxed)));
+            let p = ffmpeg::scratch_dir().join(format!("svp-trim-{}-{}", std::process::id(), TEMP_ID.fetch_add(1, Ordering::Relaxed)));
             match std::fs::create_dir(&p) {
                 Ok(()) => return Ok(Self(p)),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,

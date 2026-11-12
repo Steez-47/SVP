@@ -6,12 +6,20 @@ export const invoke = (cmd, args) => (T ? T.core.invoke(cmd, args) : Promise.rej
 export const listen = (ev, cb) => (T ? T.event.listen(ev, (e) => cb(e.payload)) : Promise.resolve(() => {}));
 export const win = () => T?.window.getCurrentWindow();
 
-let base = "", token = "";
-export function setServer(port, k) { base = `http://127.0.0.1:${port}`; token = k; }
+let base = "", token = "", fileUrls = false;
+/** `direct`: the backend lets this page play `file://` URLs (Linux, see allow_file_urls in lib.rs). */
+export function setServer(port, k, direct = false) {
+  base = `http://127.0.0.1:${port}`; token = k;
+  fileUrls = direct && location.protocol === "tauri:"; // `tauri dev` serves the UI over http, which may not load file://
+}
 const q = (o) => Object.entries({ k: token, ...o }).map(([a, b]) => `${a}=${encodeURIComponent(b)}`).join("&");
 export const url = {
-  file: (p) => `${base}/file?${q({ p })}`,
-  live: (p, t, v, a = 0, vf = "") => `${base}/live?${q({ p, t: t.toFixed(3), v, a, ...(vf ? { vf } : {}) })}`,
+  /** Direct playback source. `http: true` forces the media server (the fallback when a file:// load fails). */
+  file: (p, { http = false } = {}) => (fileUrls && !http && p.startsWith("/")
+    ? `file://${p.split("/").map(encodeURIComponent).join("/")}` : `${base}/file?${q({ p })}`),
+  /** `pace` = { id, rate, hold }: the playback state the server paces the stream to (Linux, see server.rs). */
+  live: (p, t, v, a = 0, vf = "", pace = null) =>
+    `${base}/live?${q({ p, t: t.toFixed(3), v, a, ...(vf ? { vf } : {}), ...(pace ? { id: pace.id, r: pace.rate, hold: pace.hold ? 1 : 0 } : {}) })}`,
   frames: (p, t, d, w, h) => `${base}/frames?${q({ p, t: t.toFixed(4), d: d.toFixed(4), w, h })}`,
   thumbs: (p, n, h) => `${base}/thumbs?${q({ p, n, h })}`,
   subs: (p, i) => `${base}/subs?${q({ p, i })}`,

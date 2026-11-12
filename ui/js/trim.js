@@ -20,6 +20,7 @@ export function initTrim(app) {
     $("trimbar").hidden = !on;
     $("btnTrim").setAttribute("aria-pressed", String(on));
     if (on) {
+      app.loadKeyframes(); // for snapping lossless cuts; not loaded until something needs them
       if (!segs.length || segs[0]._path !== player.path) { segs = [{ start: 0, end: player.duration, _path: player.path }]; active = 0; }
       setMode(settings.trimMode);
       requestAnimationFrame(() => Steez.init($("trimbar")));

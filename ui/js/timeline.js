@@ -125,8 +125,8 @@ export class Timeline extends EventTarget {
     const f = this.duration ? Math.max(0, Math.min(1, t / this.duration)) : 0;
     this.fill.style.transform = `scaleX(${f})`;
     this.thumb.style.left = `${f * 100}%`;
-    this.el.setAttribute("aria-valuenow", String(Math.round(t)));
-    this.el.setAttribute("aria-valuetext", fmt(t));
+    const sec = Math.round(t); // called every frame while playing; the slider's value only changes once a second
+    if (sec !== this._ariaSec) { this._ariaSec = sec; this.el.setAttribute("aria-valuenow", String(sec)); this.el.setAttribute("aria-valuetext", fmt(t)); }
     if (this.duration) {
       this.buf.style.left = `${(bufferedStart / this.duration) * 100}%`;
       this.buf.style.width = `${Math.max(0, (bufferedEnd - bufferedStart) / this.duration) * 100}%`;

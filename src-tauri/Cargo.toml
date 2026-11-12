@@ -1,6 +1,6 @@
 [package]
 name = "svp"
-version = "0.1.4"
+version = "0.1.5"
 description = "SVP · Steez Video Player"
 authors = ["Steez-47"]
 edition = "2021"
@@ -26,6 +26,9 @@ percent-encoding = "2"
 dirs = "6"
 tauri-plugin-updater = "2.14.1"
 tauri-plugin-process = "2.4.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+webkit2gtk = "2.0"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"

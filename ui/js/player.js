@@ -50,6 +50,9 @@ const AUDIO_OK = (a) => {
 const CONTAINER_OK = (fmt, ext) =>
   /mov|mp4/.test(fmt) ? true : /matroska|webm/.test(fmt) ? true : /^ogg$|^wav$|^flac$|^mp3$/.test(fmt);
 
+// WebKitGTK with an older GStreamer (the AppImage bundles Ubuntu 22.04's) can report the metadata of a file it
+// plays fine a moment before it knows the picture size. Chromium (WebView2) knows both at once.
+const SIZE_LATE = !window.chrome;
 const num = (s) => { const n = parseFloat(s); return Number.isFinite(n) ? n : 0; };
 const rate = (r) => { if (!r || r === "0/0") return 0; const [a, b] = r.split("/").map(Number); return b ? a / b : a; };
 
@@ -89,6 +92,7 @@ export class Player extends EventTarget {
     this._token = 0;
     video.addEventListener("error", () => this._onError());
     video.addEventListener("loadedmetadata", () => this._onMeta());
+    for (const ev of ["play", "pause", "ratechange", "loadedmetadata"]) video.addEventListener(ev, () => this._pace());
     // Live streams: the muxer may shift t=0 slightly (AAC priming etc.). The first presented frame is
     // by construction the frame at `offset`, so calibrate against it to stay on the exact frame grid.
     // Chromium reports the first frame as 0 but later frames with their true pts (shifted by AAC priming),
@@ -106,6 +110,8 @@ export class Player extends EventTarget {
   }
 
   get live() { return this.mode === "remux" || this.mode === "transcode"; }
+  /** Tell the server how a live stream is being played, so it only runs a few seconds ahead (Linux; a no-op elsewhere). */
+  _pace() { if (this.live && this._liveId) invoke("live_pace", { id: this._liveId, rate: this.v.playbackRate || 1, hold: this.v.paused }).catch(() => {}); }
   get time() { return (this.live ? this.offset : 0) + (this.v.currentTime || 0); }
   get duration() { return this.info?.duration || this.v.duration || 0; }
   get paused() { return this.v.paused; }
@@ -146,10 +152,12 @@ export class Player extends EventTarget {
     return "remux";
   }
 
-  _setDirect(path, at) {
+  /** `file` = what to play: the opened file or its cached remux. `http` forces the media server. */
+  _setDirect(file, at, { http = false } = {}) {
     this.mode = "direct";
     this._calibOn = false; this._calibS = null; // a previous live stream's calibration must not block the frame ring
-    this.v.src = url.file(path);
+    this._direct = { file, http };
+    this.v.src = url.file(file, { http });
     this._pendingSeek = at > 0 ? at : 0;
     this.emit("mode", this.mode);
   }
@@ -183,7 +191,8 @@ export class Player extends EventTarget {
     const enc = this.mode === "transcode" ? this._encoderFor() : "copy";
     let vf = "";
     if (this.mode === "transcode" && enc === "libx264" && i?.height > 1440) vf = "scale=-2:1440";
-    this.v.src = url.live(this.path, start, enc, this.audioIndex, vf);
+    this._liveId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+    this.v.src = url.live(this.path, start, enc, this.audioIndex, vf, { id: this._liveId, rate: this.v.playbackRate || 1, hold: !play });
     this._pendingSeek = 0;
     this._liveTarget = t; // exact target inside the GOP (copy mode)
     this._autoplay = play;
@@ -199,10 +208,8 @@ export class Player extends EventTarget {
       // swap to the cached file at the same moment
       const t = this.time, wasPlaying = !this.v.paused || (this.v.readyState < 3 && this._autoplay);
       this.cachePath = out;
-      this.mode = "direct";
-      this.offset = 0; this._calibOn = false; this._calibS = null;
-      this.v.src = url.file(out);
-      this._pendingSeek = t; this._autoplay = wasPlaying;
+      this.offset = 0; this._autoplay = wasPlaying;
+      this._setDirect(out, t);
       this.emit("mode", "cached");
     } catch (e) { if (!/cancel/i.test(String(e))) console.warn("cache_remux", e); }
   }
@@ -212,6 +219,15 @@ export class Player extends EventTarget {
     const i = this.info;
     // HEVC/AV1 in a container WebView2 can't decode sometimes "plays" with no picture → transcode.
     if (this.mode === "direct" && i?.video && this.v.videoWidth === 0 && !this._triedFallback) {
+      // Wait for the size before falling back: a needless remux of a big file also starts a full cached copy of it.
+      const src = this.v.src;
+      if (SIZE_LATE && this._sizeWaited !== src) {
+        this._sizeWaited = src;
+        const done = () => { clearTimeout(timer); this.v.removeEventListener("resize", done); if (this.v.src === src) this._onMeta(); };
+        const timer = setTimeout(done, 1500);
+        this.v.addEventListener("resize", done);
+        return;
+      }
       this._triedFallback = true;
       return this._goLive(VIDEO_OK(i.video) ? "remux" : "transcode", this._pendingSeek || 0, this._autoplay);
     }
@@ -226,11 +242,15 @@ export class Player extends EventTarget {
   async _onError() {
     if (!this.path || this.v.error == null) return;
     const code = this.v.error.code;
+    this.emit("mediaerror", `${this.mode} code=${code} ${this.v.error.message || ""}`);
     if (code === 1) return; // aborted by us
     if (!this.info) {
       try { this.info = describe(await invoke("probe", { path: this.path }), this.path); this.emit("info", this.info); } catch (e) { return this.emit("fail", String(e)); }
     }
-    const at = this.time;
+    const at = this._pendingSeek || this.time; // a load that failed before its metadata never applied the start position
+    // a file:// source the webview refused (Linux): the same file through the media server, before any remux
+    const d = this._direct;
+    if (this.mode === "direct" && d && !d.http && this.v.currentSrc.startsWith("file:")) return this._setDirect(d.file, at, { http: true });
     if (this.mode === "direct") { this._goLive(VIDEO_OK(this.info.video || {}) ? "remux" : "transcode", at, this._autoplay !== false); }
     else if (this.mode === "remux") { this._goLive("transcode", at, true); }
     else this.emit("fail", this.v.error.message || "This file can't be decoded.");
@@ -262,7 +282,7 @@ export class Player extends EventTarget {
     const t = this.time, play = !this.v.paused;
     this.audioIndex = i;
     const plan = this.plan();
-    if (plan === "direct") { this.mode = "direct"; this.v.src = url.file(this.path); this._pendingSeek = t; this._autoplay = play; this.emit("mode", "direct"); }
+    if (plan === "direct") { this._autoplay = play; this._setDirect(this.path, t); }
     else { invoke("cache_cancel").catch(() => {}); this._goLive(plan, t, play); }
   }
 

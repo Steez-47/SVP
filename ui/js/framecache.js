@@ -9,6 +9,10 @@
 import { url, readFrames } from "./api.js";
 import { settings } from "./settings.js";
 
+// WebKitGTK keeps a full-size GPU texture alive for every createImageBitmap(video) until a garbage
+// collection that GPU memory never triggers: about 1 GB of VRAM a second at 1440p60, which fills the
+// card in seconds and then stalls the whole UI. There the ring draws into recycled canvases instead.
+const POOLED = !window.chrome;
 const MAX_BYTES = 512 * 1024 * 1024; // JPEG budget
 const MAX_BMPS = 28;                 // decoded bitmaps kept around the playhead
 
@@ -22,8 +26,9 @@ export class FrameCache {
 
   reset(path = "", info = null) {
     this.abortAll?.();
+    for (const f of this.frames || []) f.bmp?.close(); // pictures are GPU memory the garbage collector doesn't see
     this.path = path; this.info = info;
-    this.frames = [];          // sorted { t, jpg?: Uint8Array, bmp?: ImageBitmap, ring?: bool }
+    this.frames = [];          // sorted { t, jpg?: Uint8Array, bmp?: ImageBitmap | canvas, ring?: bool }
     this.ranges = [];          // [[a, b]] fully known intervals (source seconds)
     this.bytes = 0;
     this.reqs = new Set();
@@ -32,6 +37,8 @@ export class FrameCache {
     this.size = { w: 0, h: 0 };
     this.ring = { last: -1, lastT: -1 };
     this.ringRange = null;
+    this._ringQ = [];          // ring frames in capture order (oldest first)
+    this._ringEpoch = (this._ringEpoch || 0) + 1;
     this.hide();
     this.onchange?.();
   }
@@ -115,25 +122,45 @@ export class FrameCache {
     if (!settings.ringFrames || !this.info?.width) return;
     const contiguous = presented === this.ring.last + 1 && t > this.ring.lastT;
     this.ring.last = presented; this.ring.lastT = t;
-    if (!contiguous) this.ringRange = null;
-    if (this._ringPending) { this.ringRange = null; return; } // missed one → not contiguous anymore
+    if (!contiguous) this._dropRing(); // a seek or a skipped frame: what was captured no longer leads up to the playhead
+    if (this._ringPending) { this._dropRing(); return; } // missed one → not contiguous anymore
     this._ringPending = true;
-    const { w, h } = this.targetSize();
-    createImageBitmap(this.video, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" }).then((bmp) => {
+    const { w, h } = this.targetSize(), epoch = this._ringEpoch;
+    this._grab(w, h).then((bmp) => {
       this._ringPending = false;
-      this._insert({ t, bmp, ring: true });
+      if (epoch !== this._ringEpoch) return bmp.close(); // the ring was dropped while this frame was being grabbed
+      const q = this._ringQ;
+      q.push(this._insert({ t, bmp, ring: true }));
       this.ringRange = this.ringRange ? [this.ringRange[0], t] : [t, t];
-      const ringF = this.frames.filter((x) => x.ring && x.bmp && !x.jpg);
-      for (const old of ringF.slice(0, Math.max(0, ringF.length - settings.ringFrames))) {
-        old.bmp.close(); old.bmp = null; this._drop(old);
-        const oi = this.bmpOrder.indexOf(old); if (oi >= 0) this.bmpOrder.splice(oi, 1);
-      }
-      const first = this.frames.find((x) => x.ring && x.bmp);
-      if (first && this.ringRange) this.ringRange[0] = Math.max(this.ringRange[0], first.t);
-    }).catch(() => { this._ringPending = false; this.ringRange = null; });
+      while (q.length > settings.ringFrames) this._release(q.shift());
+      if (q.length) this.ringRange[0] = Math.max(this.ringRange[0], q[0].t);
+    }).catch(() => { this._ringPending = false; this._dropRing(); });
   }
+  /** The frame on screen as something drawable with `width`, `height` and `close()`. */
+  _grab(w, h) {
+    if (!POOLED) return createImageBitmap(this.video, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" });
+    const pool = this._pool || (this._pool = []);
+    let c = pool.pop();
+    if (!c) { c = document.createElement("canvas"); c.close = () => { if (pool.length < 4) pool.push(c); else c.width = c.height = 0; }; }
+    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+    c.getContext("2d", { alpha: false }).drawImage(this.video, 0, 0, w, h);
+    return Promise.resolve(c);
+  }
+  /** Free a ring frame's picture; the frame itself stays only if a decode window gave it a JPEG too. */
+  _release(f) {
+    if (f.jpg || !f.bmp || f === this.shown) return; // a JPEG-backed bitmap belongs to the LRU in _touch
+    f.bmp.close(); f.bmp = null; this._drop(f);
+    const k = this.bmpOrder.indexOf(f); if (k >= 0) this.bmpOrder.splice(k, 1);
+  }
+  _dropRing() {
+    this._ringEpoch++;
+    for (const f of this._ringQ) this._release(f);
+    this._ringQ = []; this.ringRange = null;
+  }
+  /** Playback stopped: the ring's frames become an ordinary known range. */
   breakRing() {
     this.ring.last = -1; this.ring.lastT = -1;
+    this._ringEpoch++; this._ringQ = []; // their pictures now live and die by the LRU in _touch
     if (this.ringRange) { this._cover(this.ringRange[0], this.ringRange[1]); this.ringRange = null; }
   }
 
